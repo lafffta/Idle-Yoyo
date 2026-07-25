@@ -25,7 +25,7 @@ Sustained earnings become the cap multiplied by uptime. Throw Power sets the cei
 
 ## Consequences
 
-The game has **two** upgrade axes, not three. Uptime depends on the product `R·D`, so the Bearing (lowering `D`) and Rewind Speed (lowering `R`) push the same lever from opposite ends — they are different prices for the same effect, not independent stats.
+The game has **two** *rate* axes, not three. Uptime depends on the product `R·D`, so the Bearing (lowering `D`) and Rewind Speed (lowering `R`) push the same lever from opposite ends — they are different prices for the same effect, not independent stats.
 
 - **Power** — Throw Power. Sets the ceiling, pays quadratically, unbounded.
 - **Uptime** — Bearing and Rewind Speed. Bounded above by 100%, with naturally diminishing returns: 50%→90% uptime is a 1.8× gain, 90%→99% only 1.1×.
@@ -33,3 +33,17 @@ The game has **two** upgrade axes, not three. Uptime depends on the product `R·
 The uptime axis therefore retires itself gracefully as it saturates, with no artificial cap required.
 
 The cost is dead air. The loop now contains a stretch where nothing earns, and some players will read the winding animation as the game wasting their time. Rewind Speed must be purchasable early and feel good to buy. Do not resolve that complaint by shortening Rewind to zero — that reintroduces the cancellation above and kills the Bearing.
+
+## Amendment: Tricks, and the constraint they inherit
+
+ADR 0004 added Tricks, which is a third axis. The claim above still holds as written: Tricks are not a *rate* axis. Power and Uptime jointly determine Sustained Style, and Tricks multiply the result. A multiplier composes with both and coordinates with neither, so nothing in the analysis above changes.
+
+What does change is the danger. Tricks are permanent and survive every Retire (ADR 0005); Gear is bought fresh on each of the twelve runs. A persistent effect that neutralises a resettable axis therefore does not merely end that axis for the current run — it deletes two of the three Gear purchases from **every remaining run in the game**.
+
+The Uptime axis is uniquely exposed to this, because it is bounded. Power is unbounded and cannot be neutralised by any finite bonus; Uptime saturates at 100%, and a single Trick that earns during Rewind would take it there permanently.
+
+**Constraint, binding on all future content: no permanent effect may touch the Uptime lever.** No Trick and no Kit item may reduce Rewind, raise Uptime, or earn during Rewind. That lever belongs exclusively to resettable Gear.
+
+Structural Tricks — those that change the shape of the Throw Cycle rather than multiplying Style — must therefore act elsewhere. Carrying leftover Spin into the next Throw, paying a bonus scaled by Spin headroom above a Trick's cost, allowing an Attempt during Rewind, and changing how Throw Power converts into Spin are all available and all leave the lever intact.
+
+This constraint is not a cap. The original argument stands: Uptime retires itself gracefully as it saturates, and requires no artificial ceiling. What it requires is that nothing permanent saturate it *for* the player.
