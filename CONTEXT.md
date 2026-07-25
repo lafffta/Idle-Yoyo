@@ -29,3 +29,7 @@ _Avoid_: Strength, force, launch power
 **Bearing**:
 The component governing how quickly a Sleeper loses Spin. A better Bearing keeps the yoyo alive longer.
 _Avoid_: Friction, decay, axle
+
+**Auto-Thrower**:
+A machine that performs a Throw on the player's behalf when the yoyo dies. Owning one is what makes the game idle rather than active.
+_Avoid_: Auto-clicker, automation, bot
