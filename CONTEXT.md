@@ -19,3 +19,13 @@ _Avoid_: Energy, charge, RPM, momentum
 **Dead Yoyo**:
 A yoyo whose Spin has reached zero. Earns nothing until the next Throw.
 _Avoid_: Stopped, expired, asleep
+
+## Gear
+
+**Throw Power**:
+The Spin a Throw starts with. The player's primary measure of strength.
+_Avoid_: Strength, force, launch power
+
+**Bearing**:
+The component governing how quickly a Sleeper loses Spin. A better Bearing keeps the yoyo alive longer.
+_Avoid_: Friction, decay, axle
