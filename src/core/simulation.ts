@@ -28,6 +28,16 @@ export type GameState = {
   throwPowerLevel: number;
   bearingLevel: number;
   rewindSpeedLevel: number;
+  /**
+   * Kit, and the only member of it — owned rather than levelled, and permanent (ADR 0006).
+   *
+   * Sits apart from the Gear levels above deliberately. Retire clears Gear eleven times over
+   * the life of the game and must leave this alone: a player who Retired before bed and woke
+   * to a yoyo that died minutes after they closed the tab would have been robbed by the very
+   * thing meant to reward them. Nothing resets anything yet, so the distinction lives in the
+   * shape of the save until there is a Retire to honour it.
+   */
+  hasAutoThrower: boolean;
 };
 
 export const SCHEMA_VERSION = 1;
@@ -43,6 +53,7 @@ export function initialState(): GameState {
     throwPowerLevel: 0,
     bearingLevel: 0,
     rewindSpeedLevel: 0,
+    hasAutoThrower: false,
   };
 }
 
@@ -143,10 +154,49 @@ export function buyRewindSpeed(state: GameState): GameState {
   return { ...state, style: state.style - cost, rewindSpeedLevel: state.rewindSpeedLevel + 1 };
 }
 
+/**
+ * What the Auto-Thrower costs.
+ *
+ * Takes no state, unlike every Gear price: Kit is owned rather than levelled, so there is no
+ * level to price the next one against and no second one to sell.
+ */
+export function autoThrowerCost(): number {
+  return PROVISIONAL.autoThrowerCost;
+}
+
+/**
+ * Buy the Auto-Thrower — the moment the game stops being a clicker and becomes an idler
+ * (ADR 0002).
+ *
+ * A one-time purchase and not a level: a player who clicks twice has spent its price once. The
+ * second click is refused for the same reason an unaffordable one is, and by the same rule —
+ * the state comes back exactly as it went in.
+ */
+export function buyAutoThrower(state: GameState): GameState {
+  if (state.hasAutoThrower) return state;
+
+  const cost = autoThrowerCost();
+  if (state.style < cost) return state;
+
+  return { ...state, style: state.style - cost, hasAutoThrower: true };
+}
+
 /** A Throw is legal only from `Ready`. */
 export function throwYoyo(state: GameState): GameState {
   if (state.phase !== "Ready") return state;
   return { ...state, phase: "Sleeping", spin: throwPower(state), phaseElapsed: 0 };
+}
+
+/**
+ * The Auto-Thrower's entire behaviour: a yoyo back in the hand is Thrown again at once.
+ *
+ * It re-Throws rather than shortcutting anything — the string still winds, the Rewind is still
+ * waited out, and the Throw it makes is the same `throwYoyo` a player makes, at whatever Throw
+ * Power they own now. It buys the player's absence, not speed, which is why it moves Sustained
+ * Style not at all (ADR 0002).
+ */
+function reThrowIfAutomatic(state: GameState): GameState {
+  return state.hasAutoThrower ? throwYoyo(state) : state;
 }
 
 /**
@@ -166,6 +216,14 @@ export function advance(state: GameState, seconds: number): GameState {
 
   while (remaining > 0) {
     if (current.phase === "Ready") {
+      if (current.hasAutoThrower) {
+        // Bought while the yoyo sat in the hand: the machine takes over without waiting for
+        // the cycle to come round. Costs no time, so the Throw lands at the top of this delta
+        // rather than a moment into it.
+        current = reThrowIfAutomatic(current);
+        continue;
+      }
+
       // Nothing happens here on its own, so the rest of the delta costs one step however
       // long it is.
       current = { ...current, phaseElapsed: current.phaseElapsed + remaining };
@@ -184,8 +242,11 @@ export function advance(state: GameState, seconds: number): GameState {
       const winds = remaining >= untilWound;
       const dt = winds ? untilWound : remaining;
 
+      // Re-Thrown here rather than on the next pass of the loop, so that a delta ending exactly
+      // as the string finishes winding still finds the yoyo spinning: with an Auto-Thrower there
+      // is no instant at which it waits in the hand.
       current = winds
-        ? { ...current, phase: "Ready", phaseElapsed: 0 }
+        ? reThrowIfAutomatic({ ...current, phase: "Ready", phaseElapsed: 0 })
         : { ...current, phaseElapsed: current.phaseElapsed + dt };
       remaining -= dt;
       continue;

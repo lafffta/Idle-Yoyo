@@ -59,4 +59,14 @@ export const PROVISIONAL = {
   rewindSpeedBaseCost: 15,
   /** What each level owned multiplies the cost of the next one by. */
   rewindSpeedCostGrowth: 1.18,
+  /**
+   * Style cost of the Auto-Thrower, bought once and owned forever.
+   *
+   * The most load-bearing number in this file, and the one to attack first once a tuning
+   * harness exists. ADR 0002 calls it retention-critical: until the player owns one, closing
+   * the game earns them almost nothing, so a price beyond the first session loses players
+   * before they ever see the game become idle. 500 is a guess aimed at ten to fifteen minutes
+   * in — around 200 Throws by hand at the opening rate, less as Gear is bought.
+   */
+  autoThrowerCost: 500,
 } as const;
