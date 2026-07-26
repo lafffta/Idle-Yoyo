@@ -7,8 +7,11 @@ import {
   buyBearing,
   buyRewindSpeed,
   buyThrowPower,
+  currentStyleRate,
   initialState,
+  projectedYield,
   rewindSpeedCost,
+  sustainedStyle,
   throwPowerCost,
   throwYoyo,
 } from "./simulation.js";
@@ -815,6 +818,312 @@ describe("Uptime as it saturates", () => {
 
     expect(uptime(state)).toBeGreaterThan(0.99);
     expect(uptime(state)).toBeLessThan(1);
+  });
+});
+
+describe("the Sustained Style readout", () => {
+  it("is 0.3125 Style a second for an opening Throw", () => {
+    // The figure the spec derives by hand for the opening state: 2.5 Style per Throw over an
+    // eight-second Throw Cycle.
+    expect(sustainedStyle(initialState())).toBeCloseTo(0.3125, 10);
+  });
+
+  /**
+   * The readout against the Style a player would actually collect, for a spread of Gear.
+   *
+   * `measuredSustainedStyle` plays a whole Throw Cycle through `advance` and divides what it
+   * earned by how long it took, so it is the yield-per-Throw-over-cycle-length derivation
+   * arrived at independently — the readout computes neither of those quantities. #8 asks for
+   * both derivations to agree, and this is the pair of them meeting.
+   */
+  it("agrees with what a player re-Throwing on time actually earns per second", () => {
+    const shoppingTrips = [
+      initialState(),
+      afterBuyingThrowPower(5),
+      afterBuyingBearing(3),
+      afterBuyingRewindSpeed(4),
+      afterShopping([buyThrowPower, 7], [buyBearing, 5], [buyRewindSpeed, 9]),
+      // Past the Rewind floor, where the two derivations are least likely to agree by luck.
+      afterShopping([buyRewindSpeed, 300], [buyBearing, 6]),
+    ];
+
+    for (const shopped of shoppingTrips) {
+      expect(sustainedStyle(shopped)).toBeCloseTo(measuredSustainedStyle(shopped), 6);
+    }
+  });
+
+  it("is right during the very first Throw Cycle, before any cycle has completed", () => {
+    // Read off a save that has never thrown, then checked against ten cycles of a player
+    // re-Throwing on time. The figure quoted before anything has happened is the rate the
+    // game goes on to deliver — which is what makes it honest to show immediately, with no
+    // history to average and nothing to warm up.
+    const neverThrown = initialState();
+    const quoted = sustainedStyle(neverThrown);
+
+    const cycle = throwCycleLength(neverThrown);
+    let state = neverThrown;
+    for (let cycles = 0; cycles < 10; cycles++) state = advance(throwYoyo(state), cycle);
+
+    expect(quoted).toBeCloseTo(state.style / (10 * cycle), 6);
+  });
+
+  it("holds still while the yoyo slows and while the string winds back up", () => {
+    // ADR 0007 asks for the one figure in the game that does not move: it changes when the
+    // player buys something and otherwise not at all. Sampled right through a Throw Cycle —
+    // a fast fresh Sleeper, a nearly dead one, the Rewind, the yoyo back in the hand.
+    const thrown = freshSleeper();
+    const readings = [0, 1, 4.9, 5, 6, 7.9, 8].map((seconds) => {
+      return sustainedStyle(advance(thrown, seconds));
+    });
+
+    for (const reading of readings) expect(reading).toBeCloseTo(0.3125, 10);
+  });
+
+  it("does not dip during the Rewind, when the yoyo is earning nothing at all", () => {
+    // The specific complaint ADR 0003 raised: players read the winding animation as wasted
+    // time. Style really does stop coming in here, and the headline figure still does not
+    // flinch, because it is an average over the cycle the Rewind is part of.
+    const dead = advance(freshSleeper(), 5);
+    const midRewind = advance(dead, 1.5);
+
+    expect(midRewind.phase).toBe("Rewinding");
+    expect(midRewind.style).toBeCloseTo(dead.style, 10);
+    expect(sustainedStyle(midRewind)).toBeCloseTo(sustainedStyle(dead), 10);
+    expect(sustainedStyle(midRewind)).toBeCloseTo(sustainedStyle(freshSleeper()), 10);
+  });
+
+  it("moves the instant a Gear purchase is made, not a Throw Cycle later", () => {
+    // The failure mode ADR 0007 names outright: a figure measured over recent cycles lags
+    // every purchase by a full cycle, so the player buys something, watches the number sit
+    // still, and concludes it did nothing. Bought mid-Sleeper, with the yoyo still on the
+    // string and this cycle's earnings already part-banked, all three rows move at once.
+    const midSleeper = midSleeperWithStyle(1);
+    const before = sustainedStyle(midSleeper);
+
+    for (const buy of [buyThrowPower, buyBearing, buyRewindSpeed]) {
+      const bought = buy(midSleeper);
+
+      expect(bought.phase).toBe("Sleeping");
+      expect(sustainedStyle(bought)).toBeGreaterThan(before);
+      // And the figure it jumps to is the one the game goes on to pay, not a guess at it.
+      // Measured from the yoyo back in the hand, since a Throw is what a cycle is measured
+      // from — the reading itself does not move over those twenty seconds.
+      const wound = advance(bought, 20);
+      expect(wound.phase).toBe("Ready");
+      expect(sustainedStyle(bought)).toBeCloseTo(measuredSustainedStyle(wound), 6);
+    }
+  });
+
+  /**
+   * The other derivation #8 asks about: `(k·S₀/2) × Uptime`, the form ADR 0003 works in.
+   *
+   * Both halves come from somewhere other than the readout under test. The ceiling is the peak
+   * Style rate a player can watch on the counter at the moment of the Throw, halved because
+   * Spin falls in a straight line from there to zero. Uptime is measured by bisecting the
+   * phases the yoyo actually passes through. So this is the ADR's formula assembled from
+   * observations and checked against the readout, rather than the readout checked against
+   * itself.
+   */
+  it("is the ceiling Throw Power sets, collected at the fraction of the cycle spent spinning", () => {
+    for (const shopped of [initialState(), afterBuyingBearing(3), afterBuyingRewindSpeed(6)]) {
+      const peak = currentStyleRate(throwYoyo(shopped));
+
+      expect(sustainedStyle(shopped)).toBeCloseTo((peak / 2) * uptime(shopped), 6);
+      // Uptime is a fraction, so the ceiling is a ceiling: only Throw Power raises it.
+      expect(sustainedStyle(shopped)).toBeLessThan(peak / 2);
+    }
+  });
+
+  it("is raised by each of the three Gear stats, and by buying more of any of them", () => {
+    for (const buy of [afterBuyingThrowPower, afterBuyingBearing, afterBuyingRewindSpeed]) {
+      const climbing = [0, 1, 4, 9].map((levels) => sustainedStyle(buy(levels)));
+
+      for (const [index, figure] of climbing.entries()) {
+        if (index > 0) expect(figure).toBeGreaterThan(climbing[index - 1] as number);
+      }
+    }
+  });
+});
+
+describe("the current Style rate readout", () => {
+  it("opens at 1 Style a second and falls with the Spin the yoyo has left", () => {
+    // k is 0.01 Style per unit of Spin per second, so a fresh 100-Spin Sleeper earns at 1/s
+    // and a Sleeper down to 80 Spin earns at 0.8/s. ADR 0007 keeps this off the screen as a
+    // digit and shows it as motion instead; the shell still needs the quantity to animate.
+    const thrown = freshSleeper();
+
+    expect(currentStyleRate(thrown)).toBeCloseTo(1, 10);
+    expect(currentStyleRate(advance(thrown, 1))).toBeCloseTo(0.8, 10);
+    expect(currentStyleRate(advance(thrown, 4))).toBeCloseTo(0.2, 10);
+  });
+
+  it("is the rate the Sleeper is really earning at, instant by instant", () => {
+    // Checked against Style actually banked rather than against the formula: a tenth of a
+    // second of earnings, divided by the tenth of a second it took.
+    //
+    // Read at the *midpoint* of that tenth of a second, where the comparison is exact rather
+    // than approximate — Spin falls in a straight line (ADR 0001), so a slice pays its
+    // midpoint rate exactly. Reading at the near edge instead would sit a predictable
+    // k·D·dt/2 above the average and turn this into a test about the size of the window.
+    const thrown = freshSleeper();
+    const slice = 0.1;
+
+    for (const seconds of [0, 1, 2.5, 4.9]) {
+      const at = advance(thrown, seconds);
+      const aSliceLater = advance(at, slice);
+      const paid = (aSliceLater.style - at.style) / slice;
+
+      expect(currentStyleRate(advance(at, slice / 2))).toBeCloseTo(paid, 10);
+    }
+  });
+
+  it("is nothing for a Dead Yoyo, a winding string, or a yoyo waiting in the hand", () => {
+    const dead = advance(freshSleeper(), 5);
+
+    // The instant of death, mid-Rewind, wound and Ready, and a save that has never thrown.
+    expect(dead.phase).toBe("Rewinding");
+    expect(currentStyleRate(dead)).toBe(0);
+    expect(currentStyleRate(advance(dead, 1.5))).toBe(0);
+    expect(currentStyleRate(advance(dead, 3))).toBe(0);
+    expect(currentStyleRate(initialState())).toBe(0);
+  });
+
+  it("opens higher when Throw Power is bought, since a harder Throw earns faster", () => {
+    const harder = throwYoyo(afterBuyingThrowPower(5));
+
+    expect(currentStyleRate(harder)).toBeCloseTo(2, 10);
+  });
+});
+
+/**
+ * The Style a Sleeper goes on to bank between here and the Dead Yoyo, measured by playing it
+ * out. A Rewinding or Ready yoyo earns nothing, so overshooting the death costs nothing and
+ * this needs no notion of when the yoyo is due to die.
+ */
+function styleEarnedBeforeDying(state: GameState): number {
+  return advance(state, 10_000).style - state.style;
+}
+
+describe("the projected yield of the Throw in progress", () => {
+  it("says 2.5 Style at the moment of an opening Throw, and is not an estimate", () => {
+    // ADR 0007: linear decay makes the whole future of a Throw known the instant it is thrown,
+    // so this is a fact to be stated at full confidence rather than a forecast to hedge. The
+    // second assertion is the one that earns the word: the Sleeper goes on to earn precisely
+    // what was quoted.
+    const thrown = freshSleeper();
+
+    expect(projectedYield(thrown)).toBeCloseTo(2.5, 10);
+    expect(styleEarnedBeforeDying(thrown)).toBeCloseTo(2.5, 10);
+  });
+
+  it("counts only what is still to come, falling as the Sleeper is spent", () => {
+    // A second in, the yoyo has banked 0.9 and has 1.6 left to earn on its remaining 80 Spin.
+    const thrown = freshSleeper();
+    const oneSecondIn = advance(thrown, 1);
+
+    expect(oneSecondIn.style).toBeCloseTo(0.9, 10);
+    expect(projectedYield(oneSecondIn)).toBeCloseTo(1.6, 10);
+    expect(projectedYield(advance(thrown, 4))).toBeCloseTo(0.1, 10);
+  });
+
+  it("is exact at every moment of a Sleeper, under every combination of Gear", () => {
+    const shoppingTrips = [
+      initialState(),
+      afterBuyingThrowPower(6),
+      afterBuyingBearing(4),
+      afterShopping([buyThrowPower, 3], [buyBearing, 7], [buyRewindSpeed, 5]),
+    ];
+
+    for (const shopped of shoppingTrips) {
+      const thrown = throwYoyo(shopped);
+
+      for (const fraction of [0, 0.1, 0.5, 0.9, 0.99]) {
+        const partWay = advance(thrown, sleeperLength(shopped) * fraction);
+        expect(partWay.phase).toBe("Sleeping");
+
+        expect(projectedYield(partWay)).toBeCloseTo(styleEarnedBeforeDying(partWay), 8);
+      }
+    }
+  });
+
+  it("is nothing once the yoyo is dead, with no Throw in progress to project", () => {
+    const dead = advance(freshSleeper(), 5);
+
+    expect(projectedYield(dead)).toBe(0);
+    expect(projectedYield(advance(dead, 1.5))).toBe(0);
+    expect(projectedYield(advance(dead, 3))).toBe(0);
+    expect(projectedYield(initialState())).toBe(0);
+  });
+
+  /**
+   * The prototype on #3 raised this as its first finding, against the word *exact* in this
+   * ticket: because the decay rate is derived from the Bearing level rather than snapshotted at
+   * the Throw, buying a Bearing mid-Sleeper moves the death of the yoyo already on the string,
+   * and with it a projection the player has already been shown.
+   *
+   * #7 settled it in writing rather than by snapshotting `D` — see `buyBearing` — so the
+   * behaviour is deliberate, and what "exact" claims is worth pinning down precisely. The
+   * projection is exact about the yoyo as it stands, not a promise that no purchase can move
+   * it. The reading changes the instant the Bearing is bought, and the new reading is exact in
+   * turn. What is never rewritten is Style already banked.
+   */
+  it("re-quotes exactly, rather than staying wrong, when a Bearing is bought mid-Sleeper", () => {
+    const midSleeper = midSleeperWithStyle(1);
+    const quotedBefore = projectedYield(midSleeper);
+
+    const bought = buyBearing(midSleeper);
+
+    // 80 Spin now draining at 18.4/s rather than 20 is worth 1.7391, not 1.6.
+    expect(quotedBefore).toBeCloseTo(1.6, 10);
+    expect(projectedYield(bought)).toBeCloseTo(1.7391, 4);
+    expect(projectedYield(bought)).toBeGreaterThan(quotedBefore);
+    // Exact again from here, and the 0.9 the Sleeper already banked is not un-earned.
+    expect(projectedYield(bought)).toBeCloseTo(styleEarnedBeforeDying(bought), 8);
+    expect(bought.lifetimeStyle).toBeCloseTo(0.9, 10);
+    expect(bought.lifetimeStyle).toBe(midSleeper.lifetimeStyle);
+  });
+});
+
+/**
+ * #8 asks that no readout measure or accumulate history — all three are to be functions of the
+ * state in hand and nothing else. That is the property ADR 0007 says a measured average would
+ * break, and it is not visible in any single reading: a readout keeping a running average, or
+ * quietly warming up over the first few cycles, reads perfectly plausibly at any one moment.
+ *
+ * So it is tested by reading the same yoyo twice — once on a save that has played for hours,
+ * once on a save that has just bought the same Gear and done nothing at all.
+ */
+describe("the readouts as functions of the state in hand", () => {
+  it("reads a well-played save exactly as it reads a fresh one with the same Gear", () => {
+    const shopping: Trolley[] = [
+      [buyThrowPower, 4],
+      [buyBearing, 2],
+      [buyRewindSpeed, 3],
+    ];
+    const fresh = afterShopping(...shopping);
+
+    let played = afterShopping(...shopping);
+    const cycle = throwCycleLength(fresh);
+    for (let cycles = 0; cycles < 500; cycles++) played = advance(throwYoyo(played), cycle);
+
+    // Thousands of seconds and hundreds of Style apart, and identical Gear.
+    expect(played.style).toBeGreaterThan(500);
+    expect(fresh.style).toBe(0);
+    expect(played.phase).toBe("Ready");
+
+    // Exact equality rather than approximate: these are the same function of the same Gear, so
+    // any drift at all would be history leaking in.
+    expect(sustainedStyle(played)).toBe(sustainedStyle(fresh));
+
+    for (const seconds of [0, 1.5, 3]) {
+      const playedSleeper = advance(throwYoyo(played), seconds);
+      const freshSleeperAgain = advance(throwYoyo(fresh), seconds);
+
+      expect(playedSleeper.phase).toBe("Sleeping");
+      expect(currentStyleRate(playedSleeper)).toBe(currentStyleRate(freshSleeperAgain));
+      expect(projectedYield(playedSleeper)).toBe(projectedYield(freshSleeperAgain));
+      expect(sustainedStyle(playedSleeper)).toBe(sustainedStyle(fresh));
+    }
   });
 });
 
