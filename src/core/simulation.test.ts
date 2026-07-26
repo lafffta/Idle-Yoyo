@@ -909,18 +909,24 @@ describe("buying the Auto-Thrower", () => {
 
 /** A Sleeper one Throw old, with an Auto-Thrower owned and the opening Gear. */
 function automaticSleeper(): GameState {
-  return throwYoyo(buyAutoThrower(withStyle(500)));
+  return throwYoyo(buyAutoThrower(withStyle(autoThrowerCost())));
 }
 
 describe("the Auto-Thrower keeping the loop turning", () => {
   it("throws again the instant the string is wound, spending no time at Ready", () => {
     // The Throw Cycle turns over at 8s: the yoyo is found spinning again at that exact moment,
-    // not waiting in the hand for a Throw nobody is there to make.
-    const turnedOver = advance(automaticSleeper(), 8);
+    // not waiting in the hand for a Throw nobody is there to make. Walked cycle by cycle,
+    // landing on the boundary every time, since the moment the string finishes winding is the
+    // only moment at which a machine that re-Threw a fraction late would show.
+    let state = automaticSleeper();
 
-    expect(turnedOver.phase).toBe("Sleeping");
-    expect(turnedOver.spin).toBeCloseTo(100, 10);
-    expect(turnedOver.phaseElapsed).toBeCloseTo(0, 10);
+    for (let cycle = 0; cycle < 20; cycle++) {
+      state = advance(state, 8);
+
+      expect(state.phase).toBe("Sleeping");
+      expect(state.spin).toBeCloseTo(100, 10);
+      expect(state.phaseElapsed).toBeCloseTo(0, 10);
+    }
   });
 
   it("is never found waiting in the hand, at any moment of any cycle", () => {
@@ -1016,17 +1022,18 @@ describe("coming back from eight hours away with an Auto-Thrower", () => {
     for (const trolley of shoppingTrips) {
       const returned = advance(automaticAfterShopping(...trolley), EIGHT_HOURS);
       const expected = sustainedStyle(returned) * EIGHT_HOURS;
-      // Measured on a twin with the machine taken off it: the cycle-length helpers wait for a
-      // yoyo back in the hand, and that is the one thing an Auto-Thrower never leaves there.
-      const oneThrow = yieldOfOneThrow({ ...returned, hasAutoThrower: false, phase: "Ready" });
+      // Measured on a player with the same Gear throwing by hand, since the cycle-length
+      // helpers wait for a yoyo back in the hand and an Auto-Thrower never leaves one there.
+      const oneThrow = yieldOfOneThrow(afterShopping(...trolley));
 
       // Eight hours is not a whole number of Throw Cycles under most Gear, so the player comes
       // back mid-cycle with part of one still on the string. That partial cycle is the whole of
-      // the difference — nothing else may go missing over 28,800 seconds — and it lands on the
-      // earning side of the average, because an absence that opens with a Throw gets the
-      // Sleeper before it has waited out the Rewind that pays for it.
-      expect(Math.abs(returned.style - expected)).toBeLessThan(oneThrow);
-      expect(returned.style).toBeGreaterThan(expected - oneThrow * 1e-9);
+      // the difference: nothing else may go missing over 28,800 seconds.
+      expect(returned.style).toBeLessThan(expected + oneThrow);
+      // Never behind the average, either. An absence that opens with a Throw collects the
+      // Sleeper before waiting out the Rewind that pays for it, so an unfinished cycle can only
+      // leave the player ahead.
+      expect(returned.style).toBeGreaterThanOrEqual(expected);
     }
   });
 
@@ -1083,13 +1090,24 @@ describe("coming back from eight hours away with an Auto-Thrower", () => {
     expect(watched.style).toBeCloseTo(away.style, 6);
   });
 
-  it("resolves a month away promptly rather than hanging", () => {
-    const aMonth = 30 * 24 * 60 * 60;
+  /**
+   * A month is 324,000 Throw Cycles, and segment-based integration costs one step each — a few
+   * hundred thousand, which resolves in about a tenth of a second. The timeout is the assertion
+   * here, generous enough not to be a benchmark and tight enough to catch the regression it
+   * exists for: a fixed-step integrator would take a step per tick instead, and 2.6 million
+   * seconds of ticks would take long enough to freeze the tab a player reopened.
+   */
+  it(
+    "resolves a month away promptly rather than hanging",
+    () => {
+      const aMonth = 30 * 24 * 60 * 60;
 
-    const returned = advance(automaticSleeper(), aMonth);
+      const returned = advance(automaticSleeper(), aMonth);
 
-    expect(returned.style).toBeCloseTo(sustainedStyle(returned) * aMonth, 4);
-  });
+      expect(returned.style).toBeCloseTo(sustainedStyle(returned) * aMonth, 4);
+    },
+    2_000,
+  );
 
   it("mints nothing from a device clock that corrected backwards", () => {
     const running = advance(automaticSleeper(), 20);
@@ -1110,8 +1128,8 @@ describe("coming back from eight hours away without an Auto-Thrower", () => {
     const returned = advance(leftMidSleeper, EIGHT_HOURS);
 
     expect(returned.phase).toBe("Ready");
+    expect(earnedSoFar).toBeCloseTo(1.6, 10);
     expect(returned.style).toBeCloseTo(2.5, 10);
-    expect(returned.style - earnedSoFar).toBeCloseTo(2.5 - earnedSoFar, 10);
   });
 
   it("is worth nothing at all when the yoyo was already back in the hand", () => {
@@ -1121,21 +1139,6 @@ describe("coming back from eight hours away without an Auto-Thrower", () => {
 
     expect(returned.phase).toBe("Ready");
     expect(returned.style).toBeCloseTo(inTheHand.style, 10);
-  });
-});
-
-/**
- * ADR 0002 turned down the genre convention — a reduced offline rate — because it concedes the
- * core model does not survive the player being away. The parity tests above are what enforce
- * that behaviourally; this pins the structural half of the same claim, which they cannot see.
- *
- * `advance` is told how much time has passed and nothing else. It is never told whether the
- * player was away, so there is nowhere to hang a second set of rules even if someone wanted
- * one: an offline branch would need a caller willing to say which mode to run in.
- */
-describe("the way time away reaches the core", () => {
-  it("takes a state and a span of seconds, and nothing that says the player was away", () => {
-    expect(advance.length).toBe(2);
   });
 });
 

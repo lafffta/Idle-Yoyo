@@ -220,7 +220,7 @@ export function advance(state: GameState, seconds: number): GameState {
         // Bought while the yoyo sat in the hand: the machine takes over without waiting for
         // the cycle to come round. Costs no time, so the Throw lands at the top of this delta
         // rather than a moment into it.
-        current = reThrowIfAutomatic(current);
+        current = throwYoyo(current);
         continue;
       }
 
