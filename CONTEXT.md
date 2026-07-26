@@ -34,6 +34,18 @@ _Avoid_: Round, loop, iteration
 The fraction of a Throw Cycle spent as a Sleeper rather than in Rewind. The ceiling on sustained earnings.
 _Avoid_: Efficiency, duty cycle, activity
 
+## Presence
+
+Not to be confused with Uptime. Uptime is a fraction of a single Throw Cycle; these are stretches of the player's own time, and the two never appear in the same calculation.
+
+**Session**:
+A continuous stretch with the game open. The unit ADR 0002's promise is measured in — that a player reaches their first Auto-Thrower before the first one ends.
+_Avoid_: Sitting, visit, engagement, playtime
+
+**Absence**:
+A stretch with the game closed. Resolved by the ordinary simulation run forward rather than by any separate rule, and the only condition under which an Auto-Thrower is worth anything at all — it buys absence, not speed. ADR 0002 names the policy for resolving one "offline progress"; the period itself is an Absence.
+_Avoid_: Idle time, downtime, AFK
+
 ## Earning
 
 **Style**:
