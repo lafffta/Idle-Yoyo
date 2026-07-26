@@ -14,4 +14,13 @@ export const PROVISIONAL = {
   baseThrowPower: 100,
   /** `D` — Spin lost per second during a Sleeper, before any Gear. */
   baseDecay: 20,
+  /**
+   * `R` — seconds spent winding the string back up after a Dead Yoyo, before any Gear.
+   * With the values above this is an opening Uptime of 62.5%, leaving headroom to buy.
+   *
+   * Provisional like everything else here, but not optional: ADR 0003 shows that at `R = 0`
+   * the decay rate cancels out of sustained earnings and the Bearing stops working
+   * altogether. The Rewind is dead time on purpose.
+   */
+  baseRewind: 3.0,
 } as const;
