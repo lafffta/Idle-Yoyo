@@ -21,9 +21,10 @@ import type { Timeline } from "./timeline.js";
  * ADR 0009 stands: the harness reads whatever `constants.ts` currently says and makes no attempt
  * to vary it. A Report is a statement about the game as it is configured today.
  *
- * It reimplements none of the game's arithmetic. Every number below comes out of the core,
- * through the same public transitions and derived readouts a shell would use. Where the harness
- * and the game disagree, the game wins.
+ * It reimplements none of the game's earning arithmetic. Every figure in a Report comes out of
+ * the core, through the same public transitions and derived readouts a shell would use, and
+ * where the harness and the game disagree the game wins. `secondsToNextPhase` is the one place
+ * that claim needs qualifying, and it says so itself.
  *
  * **This player buys nothing.** They earn and never spend, which is the one configuration the
  * core's closed forms pin down completely — so the instrument can be checked by hand before any
@@ -152,11 +153,26 @@ function playSession(
 /**
  * How long until the yoyo next changes phase.
  *
- * The one question the harness asks about the core's state that the core does not already
- * answer for itself, and it asks with the core's own exported readouts — the same two derived
- * numbers `advance` reaches for, never a copy of the constants behind them. Landing exactly on
- * the boundary is what lets a Session that divides into whole Throw Cycles earn precisely
- * Sustained Style, which is the check the tests make against the core's closed forms.
+ * **A known duplication, recorded here rather than quietly taken.** These are `advance`'s own
+ * two boundary expressions — its `untilDead` and its `untilWound` — written a second time. The
+ * harness has to know where the Throw Cycle's boundaries fall, because "Throws whenever the
+ * yoyo is Ready" means Throwing at the instant the string finishes winding, and `advance`
+ * finds those boundaries without reporting them.
+ *
+ * Both ways of avoiding it are worse. Exporting a boundary readout from the core would widen
+ * the core's surface for a development tool, which #22 rules out in as many words — it asks
+ * that the harness drive the core "through its existing public transitions and derived
+ * readouts". Inferring the boundary instead, by advancing the whole remaining stretch and
+ * reading back how long the yoyo then sat Ready, depends on `advance`'s Ready branch absorbing
+ * the rest of a delta into `phaseElapsed` — a deeper coupling to the core's internals than two
+ * formulas, and one that stops working entirely once an Auto-Thrower is owned and the yoyo
+ * never rests Ready at all.
+ *
+ * What it does not do is copy the constants: the decay rate and the Rewind duration are asked
+ * for, not recomputed, so a rebalance still reaches the harness. And the duplication is
+ * guarded rather than merely noted — if these boundaries drift from the core's, the yoyo is
+ * left idle in the hand for part of every Throw Cycle, and `earns exactly Sustained Style when
+ * it closes on a Throw Cycle boundary` fails.
  */
 function secondsToNextPhase(state: GameState): number {
   if (state.phase === "Ready") return 0;

@@ -1,4 +1,4 @@
-import type { Report, SessionRecord } from "./simulate.js";
+import type { GearLevels, Report, SessionRecord } from "./simulate.js";
 import { simulate } from "./simulate.js";
 import type { Timeline } from "./timeline.js";
 import { CANONICAL_TIMELINE, FIRST_SESSION_SECONDS } from "./timeline.js";
@@ -32,44 +32,45 @@ function formatStyle(style: number): string {
   return style.toFixed(2);
 }
 
-function formatGear(record: Pick<SessionRecord, "gearAtClose">): string {
-  const { throwPower, bearing, rewindSpeed } = record.gearAtClose;
-  return `${throwPower} / ${bearing} / ${rewindSpeed}`;
+function formatGear(gear: GearLevels): string {
+  return `${gear.throwPower} / ${gear.bearing} / ${gear.rewindSpeed}`;
 }
 
-const COLUMNS = [
-  { heading: "#", width: 3, of: (record: SessionRecord) => String(record.session) },
-  { heading: "Session", width: 9, of: (record: SessionRecord) => formatDuration(record.seconds) },
+const COLUMNS: readonly {
+  readonly heading: string;
+  readonly width: number;
+  readonly of: (record: SessionRecord) => string;
+}[] = [
+  { heading: "#", width: 3, of: (record) => String(record.session) },
+  { heading: "Session", width: 9, of: (record) => formatDuration(record.seconds) },
   {
     heading: "Away before",
     width: 13,
-    of: (record: SessionRecord) =>
+    of: (record) =>
       record.precedingAbsenceSeconds > 0 ? formatDuration(record.precedingAbsenceSeconds) : "—",
   },
   {
     heading: "Style away",
     width: 12,
-    of: (record: SessionRecord) =>
+    of: (record) =>
       record.precedingAbsenceSeconds > 0
         ? formatStyle(record.styleEarnedDuringPrecedingAbsence)
         : "—",
   },
-  {
-    heading: "Style earned",
-    width: 14,
-    of: (record: SessionRecord) => formatStyle(record.styleEarned),
-  },
-  { heading: "Throws", width: 8, of: (record: SessionRecord) => String(record.manualThrows) },
+  { heading: "Style earned", width: 14, of: (record) => formatStyle(record.styleEarned) },
+  { heading: "Throws", width: 8, of: (record) => String(record.manualThrows) },
   {
     heading: "Sustained Style",
     width: 17,
-    of: (record: SessionRecord) => record.sustainedStyleAtClose.toFixed(4),
+    of: (record) => record.sustainedStyleAtClose.toFixed(4),
   },
-  { heading: "Gear TP/Bea/Rew", width: 17, of: formatGear },
-] as const;
+  { heading: "Gear", width: 13, of: (record) => formatGear(record.gearAtClose) },
+];
 
-function row(cells: readonly string[]): string {
-  return cells.map((cell, index) => cell.padStart(COLUMNS[index]?.width ?? cell.length)).join("");
+const headingRow = COLUMNS.map((column) => column.heading.padStart(column.width)).join("");
+
+function sessionRow(record: SessionRecord): string {
+  return COLUMNS.map((column) => column.of(record).padStart(column.width)).join("");
 }
 
 function totalSeconds(timeline: Timeline): number {
@@ -85,7 +86,7 @@ function describeTimeline(timeline: Timeline): string {
   return `${sessions.length} Sessions and ${absences.length} Absences — ${played} of play across ${elapsed}.`;
 }
 
-function print(report: Report): void {
+function print(timeline: Timeline, report: Report): void {
   const lines = [
     "Idle Yoyo — tuning harness",
     "",
@@ -93,14 +94,16 @@ function print(report: Report): void {
     "it is configured today (ADR 0009). This player buys nothing at all: they earn and never",
     "spend, so the Gear levels below stand still by construction.",
     "",
-    describeTimeline(CANONICAL_TIMELINE),
+    describeTimeline(timeline),
     `The first Session is assumed to last ${formatDuration(FIRST_SESSION_SECONDS)}. That is a` +
       " product assumption about how long a new",
     "player gives the game before deciding, not a value derived from anything, and every",
     "'within the first Session' judgement is measured against it.",
     "",
-    row(COLUMNS.map((column) => column.heading)),
-    ...report.sessions.map((record) => row(COLUMNS.map((column) => column.of(record)))),
+    "Gear reads Throw Power / Bearing / Rewind Speed.",
+    "",
+    headingRow,
+    ...report.sessions.map(sessionRow),
     "",
     `Final Sustained Style   ${report.finalSustainedStyle.toFixed(4)} Style/s`,
     `Final Gear              Throw Power ${report.finalGear.throwPower}, ` +
@@ -110,4 +113,4 @@ function print(report: Report): void {
   console.log(lines.join("\n"));
 }
 
-print(simulate(CANONICAL_TIMELINE));
+print(CANONICAL_TIMELINE, simulate(CANONICAL_TIMELINE));
