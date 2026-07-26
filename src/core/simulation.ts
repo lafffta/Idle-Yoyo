@@ -214,3 +214,83 @@ export function advance(state: GameState, seconds: number): GameState {
 
   return current;
 }
+
+/**
+ * The fraction of a Throw Cycle the yoyo spends spinning rather than winding — `S₀/(S₀ + R·D)`,
+ * written here as the ratio it names.
+ *
+ * Not exported: nothing outside asks for it yet, and `GameState` plus the readouts below are
+ * surface enough. The tests measure Uptime by playing a cycle instead, which is what lets them
+ * disagree with this.
+ */
+function uptime(state: GameState): number {
+  const sleeperLength = throwPower(state) / decayRate(state);
+  return sleeperLength / (sleeperLength + rewindDuration(state));
+}
+
+/**
+ * **Sustained Style** — Style per second averaged over a whole Throw Cycle, and the figure the
+ * whole game is read through (ADR 0007).
+ *
+ * A function of the Gear levels and nothing else, which is the point rather than an accident.
+ * ADR 0007 names the alternative as a failure mode: an average *measured* over recent cycles
+ * lags every purchase by a full cycle, so a player who buys something watches the number sit
+ * still and concludes the purchase did nothing. Derived from current stats, it moves on the
+ * purchase itself.
+ *
+ * Depending on no part of the state that time changes has two more consequences the ADRs ask
+ * for. It is already right during the first Throw Cycle of a run, before any cycle has
+ * completed and there is any history to average. And it does not dip during the Rewind — ADR
+ * 0003 worried that players would read the winding animation as wasted time, and a headline
+ * figure that does not flinch takes most of the force out of that.
+ *
+ * `(k·S₀/2)` is the ceiling only Throw Power raises; Uptime is the fraction of it actually
+ * collected.
+ */
+export function sustainedStyle(state: GameState): number {
+  const ceiling = (PROVISIONAL.stylePerSpinPerSecond * throwPower(state)) / 2;
+  return ceiling * uptime(state);
+}
+
+/**
+ * The Style the Sleeper is earning at this instant — `k × Spin`, and zero whenever the yoyo is
+ * not spinning.
+ *
+ * ADR 0007 keeps this figure off the screen as a digit: it never stops moving, reads
+ * differently at every glance, and cannot be compared against a shop price. It is shown as
+ * *motion* instead — the yoyo visibly slowing, the Style counter visibly decelerating — which
+ * is what makes the decay model legible without turning it into arithmetic. The quantity is
+ * still needed, because that animation is a readout rather than garnish.
+ *
+ * The phase is what decides whether anything is earned, rather than Spin being zero: a Dead
+ * Yoyo, a winding string and a yoyo waiting in the hand all earn nothing, and the readout
+ * should not depend on a field `GameState` declares meaningless outside a Sleeper.
+ */
+export function currentStyleRate(state: GameState): number {
+  if (state.phase !== "Sleeping") return 0;
+  return PROVISIONAL.stylePerSpinPerSecond * state.spin;
+}
+
+/**
+ * The Style the Sleeper on the string has left to earn: `k·Spin²/2D`, the area under the rest
+ * of its decay.
+ *
+ * **Exact, not estimated.** Linear decay is deterministic, so the whole future of a Throw is
+ * known the instant it is thrown, and ADR 0007 asks for this to be presented at full confidence
+ * with no hedging language — the Sleeper goes on to earn precisely this. ADR 0007 also notes the
+ * readout would not exist at all under exponential decay, where the yoyo never quite dies. It is
+ * a genuine dividend of ADR 0001 rather than a convenience.
+ *
+ * What "exact" claims is worth stating precisely, because the prototype on #3 found the edge:
+ * the decay rate is derived from the Bearing level rather than snapshotted at the Throw, so
+ * buying a Bearing mid-Sleeper moves the death of the yoyo already on the string and re-quotes
+ * this figure. The projection is exact about the yoyo as it stands; it is not a promise that no
+ * purchase can move it. #7 settled that deliberately — see `buyBearing`.
+ *
+ * Counts only what is still to come, so it falls as the Sleeper is spent and is zero whenever
+ * there is no Throw in progress to project.
+ */
+export function projectedYield(state: GameState): number {
+  if (state.phase !== "Sleeping") return 0;
+  return (PROVISIONAL.stylePerSpinPerSecond * state.spin ** 2) / (2 * decayRate(state));
+}
