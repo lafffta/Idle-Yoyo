@@ -36,4 +36,27 @@ export const PROVISIONAL = {
   throwPowerBaseCost: 10,
   /** What each level owned multiplies the cost of the next one by. */
   throwPowerCostGrowth: 1.15,
+  /** What each level of the Bearing multiplies `D` by. Below 1: Spin drains more slowly. */
+  bearingDecayPerLevel: 0.92,
+  /** Style cost of the first level of the Bearing. Per-tier once Retire arrives, as above. */
+  bearingBaseCost: 25,
+  /** What each level owned multiplies the cost of the next one by. */
+  bearingCostGrowth: 1.18,
+  /** What each level of Rewind Speed multiplies `R` by. Below 1: the string winds faster. */
+  rewindPerLevel: 0.9,
+  /**
+   * The shortest the Rewind can ever be, however much Rewind Speed is bought.
+   *
+   * Provisional in its value and not at all in its existence. At `R = 0` the decay rate
+   * cancels out of sustained earnings — `(k·S₀²/2D) × (D/S₀) = k·S₀/2` — and the Bearing
+   * stops working outright, not merely working less. Rewind Speed could then be bought until
+   * every further Bearing purchase bought nothing. ADR 0003 bars permanent effects from
+   * the Uptime lever; this guards the same lever from resettable Gear at the bottom of its
+   * range. See the regression guard in simulation.test.ts before touching it.
+   */
+  rewindFloor: 0.25,
+  /** Style cost of the first level of Rewind Speed. Per-tier once Retire arrives, as above. */
+  rewindSpeedBaseCost: 15,
+  /** What each level owned multiplies the cost of the next one by. */
+  rewindSpeedCostGrowth: 1.18,
 } as const;

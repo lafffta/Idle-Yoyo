@@ -41,4 +41,6 @@ Every numeric constant in the game is currently a **placeholder**, not an author
 
 ## Current state
 
-Design only. `CONTEXT.md`, the ADRs, and the core-loop spec (#3) with its six tickets (#4–#9) all exist; there is no code yet. #4 is the first buildable ticket and stands the project up.
+The simulation core runs and is under test, headless — there is no shell yet. `advance` carries the yoyo through all three phases of the Throw Cycle, and all three Gear stats are buyable.
+
+Of the core-loop spec (#3) and its six tickets, #4–#7 are done. Remaining: **#8** — Sustained Style and the derived readouts — and then **#9** — the Auto-Thrower and time away, which is where ADR 0002's offline claim finally gets tested.
