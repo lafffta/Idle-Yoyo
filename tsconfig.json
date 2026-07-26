@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // No DOM lib and no ambient @types. ADR 0008 requires the simulation core to have no
+    // DOM access and no dependencies, and this is what makes that a compile error rather
+    // than a convention: `document`, `window` and `structuredClone` are simply not there.
+    "lib": ["ES2022"],
+    "types": [],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}
