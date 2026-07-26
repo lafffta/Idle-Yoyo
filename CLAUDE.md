@@ -41,6 +41,6 @@ Every numeric constant in the game is currently a **placeholder**, not an author
 
 ## Current state
 
-The simulation core runs and is under test, headless — there is no shell yet. `advance` carries the yoyo through all three phases of the Throw Cycle, and all three Gear stats are buyable.
+The simulation core runs and is under test, headless — there is no shell yet. `advance` carries the yoyo through all three phases of the Throw Cycle, all three Gear stats are buyable, the readouts are derived from stats, and an Auto-Thrower re-Throws the instant the string is wound. Time away is the ordinary simulation run forward, and ADR 0002's parity claim is now an assertion rather than an intention.
 
-Of the core-loop spec (#3) and its six tickets, #4–#7 are done. Remaining: **#8** — Sustained Style and the derived readouts — and then **#9** — the Auto-Thrower and time away, which is where ADR 0002's offline claim finally gets tested.
+The core-loop spec (#3) and all six of its tickets (#4–#9) are done, and nothing is ticketed after them. The spec's own Out of Scope section is the list of what it deliberately left: the shell, save and load, Tricks, Retire, and the tuning harness it recommends as the next spec.

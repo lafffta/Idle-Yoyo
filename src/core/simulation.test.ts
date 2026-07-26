@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import type { GameState } from "./simulation.js";
 import {
   advance,
+  autoThrowerCost,
   bearingCost,
+  buyAutoThrower,
   buyBearing,
   buyRewindSpeed,
   buyThrowPower,
@@ -109,8 +111,9 @@ describe("a yoyo waiting Ready in the hand", () => {
   });
 
   it("waits indefinitely for a Throw that only the player can make", () => {
-    // Nobody re-Throws it: an hour after a single Throw the yoyo is back in the hand with
-    // only the one Sleeper's earnings. The Auto-Thrower that would change this is #9.
+    // Nobody re-Throws it: an hour after a single Throw the yoyo is back in the hand with only
+    // the one Sleeper's earnings. Buying an Auto-Thrower is what changes this, and until the
+    // player does, the pre-idle stretch is what teaches them the model (ADR 0002).
     const anHourLater = advance(freshSleeper(), 3600);
 
     expect(anHourLater.phase).toBe("Ready");
@@ -238,7 +241,7 @@ describe("time away and time watching", () => {
 
     const returned = advance(freshSleeper(), aDay);
 
-    // Nothing re-Throws the yoyo yet, so a day away is worth the one Sleeper it owed.
+    // Nothing re-Throws this yoyo, so a day away is worth the one Sleeper it owed.
     expect(returned.style).toBeCloseTo(2.5, 10);
   });
 });
@@ -834,6 +837,311 @@ describe("Uptime as it saturates", () => {
   });
 });
 
+describe("buying the Auto-Thrower", () => {
+  it("spends Style and leaves the player owning the machine", () => {
+    // 500 Style, the provisional price the spec aims at ten to fifteen minutes in.
+    const saved = withStyle(500);
+
+    const bought = buyAutoThrower(saved);
+
+    expect(bought.style).toBeCloseTo(0, 10);
+    expect(bought.hasAutoThrower).toBe(true);
+  });
+
+  it("quotes its price before the player commits to it", () => {
+    expect(autoThrowerCost()).toBeCloseTo(500, 10);
+  });
+
+  it("is refused when the player is a fraction short, leaving the state untouched", () => {
+    const nearlyEnough = withStyle(499.99);
+
+    expect(buyAutoThrower(nearlyEnough)).toEqual(nearlyEnough);
+  });
+
+  /**
+   * The Auto-Thrower is Kit, and Kit is owned rather than levelled: there is no second one to
+   * buy and no rising price to quote for it. A player who clicks twice has spent 500 Style, not
+   * 1,000.
+   */
+  it("is bought once and not again, however many times a rich player asks", () => {
+    let state = withStyle(5000);
+
+    for (let click = 0; click < 5; click++) state = buyAutoThrower(state);
+
+    expect(state.hasAutoThrower).toBe(true);
+    expect(state.style).toBeCloseTo(4500, 10);
+  });
+
+  it("survives a day of running, and nothing in the game takes it back", () => {
+    const bought = buyAutoThrower(withStyle(500));
+
+    const aDayLater = advance(throwYoyo(bought), 24 * 60 * 60);
+
+    expect(aDayLater.hasAutoThrower).toBe(true);
+  });
+
+  /**
+   * The Auto-Thrower waits out the same Rewind a player does, so it earns an attentive player
+   * nothing at all — it buys absence, not speed. The spec flags this as something the shop will
+   * have to communicate differently, since Sustained Style is the figure every other purchase is
+   * read through and this one does not touch it. Pinned here so the shop's problem stays a shop
+   * problem: a core that quietly sped the machine up would make the readout lie about a player
+   * sitting and watching.
+   */
+  it("does not move Sustained Style, which is what makes it a shop problem", () => {
+    const saved = withStyle(500);
+
+    expect(sustainedStyle(buyAutoThrower(saved))).toBe(sustainedStyle(saved));
+  });
+
+  it("is a purchase and not a tick: buying moves no time and earns nothing", () => {
+    const midSleeper = advance({ ...freshSleeper(), style: 500 }, 2);
+
+    const bought = buyAutoThrower(midSleeper);
+
+    expect(bought.phase).toBe("Sleeping");
+    expect(bought.spin).toBeCloseTo(midSleeper.spin, 10);
+    expect(bought.phaseElapsed).toBeCloseTo(midSleeper.phaseElapsed, 10);
+    expect(bought.style).toBeCloseTo(midSleeper.style - 500, 10);
+    expect(bought.lifetimeStyle).toBeCloseTo(midSleeper.lifetimeStyle, 10);
+  });
+});
+
+/** A Sleeper one Throw old, with an Auto-Thrower owned and the opening Gear. */
+function automaticSleeper(): GameState {
+  return throwYoyo(buyAutoThrower(withStyle(autoThrowerCost())));
+}
+
+describe("the Auto-Thrower keeping the loop turning", () => {
+  it("throws again the instant the string is wound, spending no time at Ready", () => {
+    // The Throw Cycle turns over at 8s: the yoyo is found spinning again at that exact moment,
+    // not waiting in the hand for a Throw nobody is there to make. Walked cycle by cycle,
+    // landing on the boundary every time, since the moment the string finishes winding is the
+    // only moment at which a machine that re-Threw a fraction late would show.
+    let state = automaticSleeper();
+
+    for (let cycle = 0; cycle < 20; cycle++) {
+      state = advance(state, 8);
+
+      expect(state.phase).toBe("Sleeping");
+      expect(state.spin).toBeCloseTo(100, 10);
+      expect(state.phaseElapsed).toBeCloseTo(0, 10);
+    }
+  });
+
+  it("is never found waiting in the hand, at any moment of any cycle", () => {
+    let state = automaticSleeper();
+
+    for (let step = 0; step < 400; step++) {
+      state = advance(state, 0.1);
+      expect(state.phase).not.toBe("Ready");
+    }
+  });
+
+  it("keeps the cycle turning with no manual Throw, five cycles running", () => {
+    // Five whole Throw Cycles at 2.5 Style each, and nobody touched it.
+    const fortySecondsOn = advance(automaticSleeper(), 40);
+
+    expect(fortySecondsOn.style).toBeCloseTo(12.5, 10);
+  });
+
+  it("still winds the string first, earning nothing during the Rewind it waits out", () => {
+    // The Auto-Thrower buys absence, not speed: it waits out the same Rewind a player does, so
+    // a cycle is worth no more to it than to somebody watching.
+    const midRewind = advance(automaticSleeper(), 6.5);
+    const laterInTheSameRewind = advance(midRewind, 1);
+
+    expect(midRewind.phase).toBe("Rewinding");
+    expect(laterInTheSameRewind.phase).toBe("Rewinding");
+    expect(laterInTheSameRewind.style).toBeCloseTo(midRewind.style, 10);
+  });
+
+  it("throws at the Throw Power the player owns, not the one they had when they bought it", () => {
+    const owned = buyAutoThrower(withStyle(500));
+    const stronger = { ...buyThrowPower({ ...owned, style: 10 }), style: 0 };
+
+    // One whole cycle on: 120 Spin lasts 6s, so at 7s the string is still winding.
+    const nextThrow = advance(throwYoyo(stronger), 6 + 3);
+
+    expect(nextThrow.phase).toBe("Sleeping");
+    expect(nextThrow.spin).toBeCloseTo(120, 10);
+  });
+
+  it("starts throwing the moment it is bought, with the yoyo already back in the hand", () => {
+    const inTheHand = advance(throwYoyo(withStyle(500)), 8);
+    expect(inTheHand.phase).toBe("Ready");
+
+    const bought = advance(buyAutoThrower(inTheHand), 1);
+
+    expect(bought.phase).toBe("Sleeping");
+    expect(bought.spin).toBeCloseTo(80, 10);
+  });
+});
+
+/** A player who has been shopping, owns an Auto-Thrower, and has just thrown. */
+function automaticAfterShopping(...trolley: Trolley[]): GameState {
+  const shopped = afterShopping(...trolley);
+  return throwYoyo(buyAutoThrower({ ...shopped, style: autoThrowerCost() }));
+}
+
+const EIGHT_HOURS = 8 * 60 * 60;
+
+/**
+ * Time away, which ADR 0002 insists is not a thing the core knows about: an absence is the
+ * ordinary simulation run forward, so these tests are the same `advance` every frame calls,
+ * handed a bigger number.
+ */
+describe("coming back from eight hours away with an Auto-Thrower", () => {
+  it("is worth Sustained Style for every second of it", () => {
+    const returned = advance(automaticSleeper(), EIGHT_HOURS);
+
+    // 0.3125 Style a second across 28,800 of them, worked out by hand in the spec, and 3,600
+    // whole Throw Cycles that the machine turned over unattended.
+    expect(returned.style).toBeCloseTo(9000, 6);
+    expect(returned.style).toBeCloseTo(sustainedStyle(returned) * EIGHT_HOURS, 6);
+    expect(returned.lifetimeStyle).toBeCloseTo(9000, 6);
+  });
+
+  it("is worth Sustained Style for every second of it under any Gear", () => {
+    const shoppingTrips: Trolley[][] = [
+      [[buyThrowPower, 6]],
+      [[buyBearing, 5]],
+      [[buyRewindSpeed, 7]],
+      [
+        [buyThrowPower, 9],
+        [buyBearing, 4],
+        [buyRewindSpeed, 3],
+      ],
+      // At the Rewind floor, where the cycle is at its shortest and there are most of them.
+      [
+        [buyRewindSpeed, 30],
+        [buyThrowPower, 12],
+      ],
+    ];
+
+    for (const trolley of shoppingTrips) {
+      const returned = advance(automaticAfterShopping(...trolley), EIGHT_HOURS);
+      const expected = sustainedStyle(returned) * EIGHT_HOURS;
+      // Measured on a player with the same Gear throwing by hand, since the cycle-length
+      // helpers wait for a yoyo back in the hand and an Auto-Thrower never leaves one there.
+      const oneThrow = yieldOfOneThrow(afterShopping(...trolley));
+
+      // Eight hours is not a whole number of Throw Cycles under most Gear, so the player comes
+      // back mid-cycle with part of one still on the string. That partial cycle is the whole of
+      // the difference: nothing else may go missing over 28,800 seconds.
+      expect(returned.style).toBeLessThan(expected + oneThrow);
+      // Never behind the average, either. An absence that opens with a Throw collects the
+      // Sleeper before waiting out the Rewind that pays for it, so an unfinished cycle can only
+      // leave the player ahead.
+      expect(returned.style).toBeGreaterThanOrEqual(expected);
+    }
+  });
+
+  /**
+   * ADR 0002's central promise, as an assertion: the rules while the player is away are the
+   * rules they already learned. There is no offline multiplier and no offline branch to carry
+   * one, so an absence resolved in a single call cannot come out ahead of — or behind — the
+   * same period watched a second at a time.
+   */
+  it("resolves the same in one call as in twenty-eight thousand", () => {
+    const inOneCall = advance(automaticSleeper(), EIGHT_HOURS);
+
+    let secondBySecond = automaticSleeper();
+    for (let second = 0; second < EIGHT_HOURS; second++) {
+      secondBySecond = advance(secondBySecond, 1);
+    }
+
+    expect(secondBySecond.phase).toBe(inOneCall.phase);
+    expect(secondBySecond.style).toBeCloseTo(inOneCall.style, 6);
+    expect(secondBySecond.spin).toBeCloseTo(inOneCall.spin, 6);
+    expect(secondBySecond.phaseElapsed).toBeCloseTo(inOneCall.phaseElapsed, 6);
+  });
+
+  /**
+   * Deliberately not a whole number of Throw Cycles. Eight hours to the second is exactly 3,600
+   * of them, and a split into five thousand uneven pieces sums to 28,800 only to within
+   * floating-point error — so it lands a fraction of a nanosecond short of a boundary the single
+   * call lands exactly on, and reads a winding string where the other has already re-Thrown. The
+   * earnings agree regardless, which is the claim; where the yoyo is at a boundary crossed in
+   * one case and not quite in the other is the one question a split like this cannot be asked.
+   */
+  it("resolves the same however unevenly the time is split up", () => {
+    const spanning = EIGHT_HOURS + 1.7;
+    const inOneCall = advance(automaticSleeper(), spanning);
+
+    let inPieces = automaticSleeper();
+    for (const piece of unevenSplits(spanning, 5000)) inPieces = advance(inPieces, piece);
+
+    expect(inPieces.phase).toBe(inOneCall.phase);
+    expect(inPieces.style).toBeCloseTo(inOneCall.style, 6);
+    expect(inPieces.spin).toBeCloseTo(inOneCall.spin, 6);
+    expect(inPieces.phaseElapsed).toBeCloseTo(inOneCall.phaseElapsed, 6);
+  });
+
+  it("earns no more for having been away than for having been watched", () => {
+    // The same eight hours, one played out in frame-sized steps by a player who never looked
+    // away. ADR 0002 rejects the genre's reduced offline rate in both directions: no bonus and
+    // no penalty, so these are the same number rather than merely close.
+    const away = advance(automaticSleeper(), EIGHT_HOURS);
+
+    let watched = automaticSleeper();
+    for (let frame = 0; frame < EIGHT_HOURS * 60; frame++) watched = advance(watched, 1 / 60);
+
+    expect(watched.style).toBeCloseTo(away.style, 6);
+  });
+
+  /**
+   * A month is 324,000 Throw Cycles, and segment-based integration costs one step each — a few
+   * hundred thousand, which resolves in about a tenth of a second. The timeout is the assertion
+   * here, generous enough not to be a benchmark and tight enough to catch the regression it
+   * exists for: a fixed-step integrator would take a step per tick instead, and 2.6 million
+   * seconds of ticks would take long enough to freeze the tab a player reopened.
+   */
+  it(
+    "resolves a month away promptly rather than hanging",
+    () => {
+      const aMonth = 30 * 24 * 60 * 60;
+
+      const returned = advance(automaticSleeper(), aMonth);
+
+      expect(returned.style).toBeCloseTo(sustainedStyle(returned) * aMonth, 4);
+    },
+    2_000,
+  );
+
+  it("mints nothing from a device clock that corrected backwards", () => {
+    const running = advance(automaticSleeper(), 20);
+
+    const clockCorrectedBackwards = advance(running, -EIGHT_HOURS);
+
+    expect(clockCorrectedBackwards).toEqual(running);
+  });
+});
+
+describe("coming back from eight hours away without an Auto-Thrower", () => {
+  it("is worth the Sleeper that was in progress and nothing after it", () => {
+    // Two seconds into a Sleeper when the tab closed: the yoyo died three seconds later,
+    // whether or not anyone was watching, and has been in the hand ever since.
+    const leftMidSleeper = advance(freshSleeper(), 2);
+    const earnedSoFar = leftMidSleeper.style;
+
+    const returned = advance(leftMidSleeper, EIGHT_HOURS);
+
+    expect(returned.phase).toBe("Ready");
+    expect(earnedSoFar).toBeCloseTo(1.6, 10);
+    expect(returned.style).toBeCloseTo(2.5, 10);
+  });
+
+  it("is worth nothing at all when the yoyo was already back in the hand", () => {
+    const inTheHand = advance(freshSleeper(), 8);
+
+    const returned = advance(inTheHand, EIGHT_HOURS);
+
+    expect(returned.phase).toBe("Ready");
+    expect(returned.style).toBeCloseTo(inTheHand.style, 10);
+  });
+});
+
 describe("the Sustained Style readout", () => {
   it("is 0.3125 Style a second for an opening Throw", () => {
     // The figure the spec derives by hand for the opening state: 2.5 Style per Throw over an
@@ -1208,6 +1516,7 @@ describe("the shape a save has to carry", () => {
 
     expect(Object.keys(played).sort()).toEqual([
       "bearingLevel",
+      "hasAutoThrower",
       "lifetimeStyle",
       "phase",
       "phaseElapsed",
@@ -1217,5 +1526,23 @@ describe("the shape a save has to carry", () => {
       "throwPowerLevel",
       "version",
     ]);
+  });
+
+  /**
+   * ADR 0006 splits the purchasables in two, and the split is the whole decision rather than a
+   * label on it: Retire clears Gear eleven times over the life of the game and must never take
+   * the Auto-Thrower with it, or the game un-idles itself every time it rewards the player.
+   *
+   * There is no Retire yet to demonstrate that against, so this pins what a save records
+   * instead. Gear is levels, which a reset can zero; Kit is a thing owned. A save that filed
+   * the Auto-Thrower as an `autoThrowerLevel` alongside the other three would be one reset
+   * away from selling it back.
+   */
+  it("records the Auto-Thrower as Kit the player owns, not as a fourth Gear level", () => {
+    const owned = buyAutoThrower(withStyle(500));
+
+    expect(owned.hasAutoThrower).toBe(true);
+    const levels = Object.keys(owned).filter((field) => field.endsWith("Level"));
+    expect(levels.sort()).toEqual(["bearingLevel", "rewindSpeedLevel", "throwPowerLevel"]);
   });
 });
