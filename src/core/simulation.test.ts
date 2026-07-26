@@ -20,6 +20,22 @@ describe("a Throw", () => {
 
     expect(throwYoyo(halfwayThrough)).toEqual(halfwayThrough);
   });
+
+  it("is refused while the string is still winding back up, leaving the Rewind untouched", () => {
+    const halfwayWound = advance(freshSleeper(), 6.5);
+
+    expect(halfwayWound.phase).toBe("Rewinding");
+    expect(throwYoyo(halfwayWound)).toEqual(halfwayWound);
+  });
+
+  it("starts a fresh Sleeper at full Throw Power once the yoyo is back in the hand", () => {
+    const wound = advance(freshSleeper(), 8);
+
+    const thrownAgain = throwYoyo(wound);
+
+    expect(thrownAgain.phase).toBe("Sleeping");
+    expect(thrownAgain.spin).toBe(100);
+  });
 });
 
 describe("a Sleeper losing Spin", () => {
@@ -39,6 +55,71 @@ describe("a Sleeper losing Spin", () => {
     expect(justAlive.spin).toBeGreaterThan(0);
     expect(dead.spin).toBe(0);
     expect(dead.phase).not.toBe("Sleeping");
+  });
+});
+
+describe("the Rewind after a Dead Yoyo", () => {
+  it("winds the string back up rather than coming straight to rest in the hand", () => {
+    const dead = advance(freshSleeper(), 5);
+
+    expect(dead.phase).toBe("Rewinding");
+  });
+
+  it("comes to rest Ready three seconds after the yoyo died, and not before", () => {
+    // The Sleeper is 5s, so the Throw Cycle turns over at 8s.
+    const stillWinding = advance(freshSleeper(), 7.999);
+    const wound = advance(freshSleeper(), 8);
+
+    expect(stillWinding.phase).toBe("Rewinding");
+    expect(wound.phase).toBe("Ready");
+  });
+
+  it("earns no Style while the string is winding back up", () => {
+    const dead = advance(freshSleeper(), 5);
+    const halfwayWound = advance(dead, 1.5);
+    const wound = advance(dead, 3);
+
+    expect(halfwayWound.style).toBeCloseTo(dead.style, 10);
+    expect(wound.style).toBeCloseTo(dead.style, 10);
+  });
+});
+
+describe("a yoyo waiting Ready in the hand", () => {
+  it("earns nothing, however long it is left there", () => {
+    const wound = advance(freshSleeper(), 8);
+
+    const anHourLater = advance(wound, 3600);
+
+    expect(anHourLater.phase).toBe("Ready");
+    expect(anHourLater.style).toBeCloseTo(wound.style, 10);
+  });
+
+  it("waits indefinitely for a Throw that only the player can make", () => {
+    // Nobody re-Throws it: an hour after a single Throw the yoyo is back in the hand with
+    // only the one Sleeper's earnings. The Auto-Thrower that would change this is #9.
+    const anHourLater = advance(freshSleeper(), 3600);
+
+    expect(anHourLater.phase).toBe("Ready");
+    expect(anHourLater.style).toBeCloseTo(2.5, 10);
+  });
+});
+
+describe("throwing the yoyo over and over by hand", () => {
+  it("repeats an identical Throw Cycle every eight seconds", () => {
+    let state = freshSleeper();
+    const yieldPerCycle: number[] = [];
+
+    for (let cycle = 0; cycle < 4; cycle++) {
+      const before = state.style;
+      // A Throw Cycle is 5s of Sleeper and 3s of Rewind, after which the yoyo is Ready.
+      state = advance(state, 8);
+      expect(state.phase).toBe("Ready");
+      yieldPerCycle.push(state.style - before);
+      state = throwYoyo(state);
+    }
+
+    for (const earned of yieldPerCycle) expect(earned).toBeCloseTo(2.5, 10);
+    expect(yieldPerCycle).toHaveLength(4);
   });
 });
 
@@ -116,6 +197,26 @@ describe("time away and time watching", () => {
     expect(inPieces.style).toBeCloseTo(inOneCall.style, 10);
     expect(inPieces.spin).toBeCloseTo(inOneCall.spin, 10);
     expect(inPieces.phase).toBe(inOneCall.phase);
+  });
+
+  /** A Sleeper ends at 5s and the Rewind completes at 8s, so both fall inside 10.5s. */
+  it.each([
+    { name: "landing mid-Rewind, having crossed the yoyo's death", spanning: 7.5 },
+    { name: "landing at Ready, having crossed both boundaries", spanning: 10.5 },
+  ])("agrees on $name however the time is split", ({ spanning }) => {
+    const inOneCall = advance(freshSleeper(), spanning);
+
+    let inPieces = freshSleeper();
+    for (const piece of unevenSplits(spanning, 331)) inPieces = advance(inPieces, piece);
+
+    let inHalfSeconds = freshSleeper();
+    for (let i = 0; i < spanning * 2; i++) inHalfSeconds = advance(inHalfSeconds, 0.5);
+
+    for (const split of [inPieces, inHalfSeconds]) {
+      expect(split.style).toBeCloseTo(inOneCall.style, 10);
+      expect(split.phase).toBe(inOneCall.phase);
+      expect(split.phaseElapsed).toBeCloseTo(inOneCall.phaseElapsed, 10);
+    }
   });
 
   it("resolves a day away without hanging", () => {

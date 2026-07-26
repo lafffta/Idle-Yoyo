@@ -5,12 +5,8 @@ import { PROVISIONAL } from "./constants.js";
  *
  * A Dead Yoyo is the instant Spin reaches zero — the transition out of `Sleeping` — and
  * not a phase the yoyo sits in.
- *
- * `Rewinding` is missing on purpose: the Rewind period is the next slice of the core loop,
- * and it is load-bearing rather than decorative, so it arrives with the tests that hold it
- * in place. Until then a Dead Yoyo comes straight to rest at `Ready`.
  */
-export type Phase = "Sleeping" | "Ready";
+export type Phase = "Sleeping" | "Rewinding" | "Ready";
 
 /**
  * The save-compatibility surface (ADR 0008). Effective stats are never stored here: they
@@ -53,6 +49,11 @@ export function decayRate(_state: GameState): number {
   return PROVISIONAL.baseDecay;
 }
 
+/** Derived, never stored. Rewind Speed will feed into this from #7 onwards. */
+export function rewindDuration(_state: GameState): number {
+  return PROVISIONAL.baseRewind;
+}
+
 /** A Throw is legal only from `Ready`. */
 export function throwYoyo(state: GameState): GameState {
   if (state.phase !== "Ready") return state;
@@ -83,6 +84,20 @@ export function advance(state: GameState, seconds: number): GameState {
       continue;
     }
 
+    if (current.phase === "Rewinding") {
+      // Earns nothing. ADR 0003: this dead time is what makes Uptime a quantity worth
+      // improving, so the Bearing keeps working once an Auto-Thrower is in play.
+      const untilWound = rewindDuration(current) - current.phaseElapsed;
+      const winds = remaining >= untilWound;
+      const dt = winds ? untilWound : remaining;
+
+      current = winds
+        ? { ...current, phase: "Ready", phaseElapsed: 0 }
+        : { ...current, phaseElapsed: current.phaseElapsed + dt };
+      remaining -= dt;
+      continue;
+    }
+
     const decay = decayRate(current);
     const untilDead = current.spin / decay;
     const dies = remaining >= untilDead;
@@ -98,7 +113,7 @@ export function advance(state: GameState, seconds: number): GameState {
       lifetimeStyle: current.lifetimeStyle + earned,
       // The Dead Yoyo is the instant Spin reaches zero, not a phase to sit in.
       ...(dies
-        ? { spin: 0, phase: "Ready" as const, phaseElapsed: 0 }
+        ? { spin: 0, phase: "Rewinding" as const, phaseElapsed: 0 }
         : { spin: current.spin - decay * dt, phaseElapsed: current.phaseElapsed + dt }),
     };
     remaining -= dt;
