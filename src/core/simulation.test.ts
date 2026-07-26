@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { advance, initialState, throwYoyo } from "./simulation.js";
+import type { GameState } from "./simulation.js";
+import { advance, buyThrowPower, initialState, throwPowerCost, throwYoyo } from "./simulation.js";
 
 /** A Sleeper in progress, one Throw old, with the provisional opening stats. */
 function freshSleeper() {
@@ -264,5 +265,173 @@ describe("a delta the device clock got wrong", () => {
     const oneSecondIn = advance(freshSleeper(), 1);
 
     expect(advance(oneSecondIn, 0)).toEqual(oneSecondIn);
+  });
+});
+
+/** A yoyo at rest in the hand, with `style` Style saved up and nothing bought yet. */
+function withStyle(style: number): GameState {
+  return { ...initialState(), style };
+}
+
+/** A player who has saved up and bought `levels` of Throw Power, and not thrown since. */
+function afterBuying(levels: number): GameState {
+  let state = withStyle(100_000);
+  for (let level = 0; level < levels; level++) state = buyThrowPower(state);
+  return state;
+}
+
+/** A Sleeper `seconds` old, with Style saved up to spend while it is still on the string. */
+function midSleeperWithStyle(seconds: number): GameState {
+  return advance({ ...freshSleeper(), style: 100 }, seconds);
+}
+
+/** The Style one whole Sleeper earns, thrown from a yoyo at rest. */
+function yieldOfOneThrow(state: GameState): number {
+  const thrown = throwYoyo(state);
+  // Twenty seconds outlasts the longest Sleeper here, and a Dead Yoyo earns nothing after.
+  return advance(thrown, 20).style - thrown.style;
+}
+
+describe("buying Throw Power", () => {
+  it("spends Style and makes the next Throw start with more Spin", () => {
+    // The opening Throw Power level costs 10 Style, exactly. A Throw is worth 2.5, so four
+    // Sleepers by hand pays for it and leaves nothing over.
+    const saved = withStyle(10);
+
+    const bought = buyThrowPower(saved);
+
+    expect(bought.style).toBeCloseTo(0, 10);
+    expect(throwYoyo(bought).spin).toBe(120);
+  });
+
+  it("costs more every level, so the tenth is not priced like the first", () => {
+    // 10 Style, then ×1.15 per level owned: 10, 11.5, 13.225, and 35.1788 for the tenth.
+    let state = withStyle(1000);
+    const paid: number[] = [];
+
+    for (let purchase = 0; purchase < 10; purchase++) {
+      const before = state.style;
+      state = buyThrowPower(state);
+      paid.push(before - state.style);
+    }
+
+    expect(paid[0]).toBeCloseTo(10, 10);
+    expect(paid[1]).toBeCloseTo(11.5, 10);
+    expect(paid[2]).toBeCloseTo(13.225, 10);
+    expect(paid[9]).toBeCloseTo(35.1788, 4);
+  });
+
+  it("quotes the price of the next level before the player commits to it", () => {
+    const saved = withStyle(1000);
+
+    expect(throwPowerCost(saved)).toBeCloseTo(10, 10);
+    expect(throwPowerCost(buyThrowPower(saved))).toBeCloseTo(11.5, 10);
+  });
+
+  it("is refused when the player is a fraction short, leaving the state untouched", () => {
+    const nearlyEnough = withStyle(9.999);
+
+    expect(buyThrowPower(nearlyEnough)).toEqual(nearlyEnough);
+  });
+
+  it("goes through on exactly the asking price, at a level the price is not a round number", () => {
+    // The second level costs 11.5: a player who saved precisely that is owed the purchase.
+    const exactlyEnough = buyThrowPower(withStyle(10 + 11.5));
+
+    const bought = buyThrowPower(exactlyEnough);
+
+    expect(bought.style).toBeCloseTo(0, 10);
+    expect(throwYoyo(bought).spin).toBe(140);
+  });
+
+  it("never runs the balance negative, however many times a broke player asks", () => {
+    let broke = withStyle(10);
+
+    for (let attempt = 0; attempt < 5; attempt++) broke = buyThrowPower(broke);
+
+    // The first purchase clears the balance; the second level costs 11.5 and is refused.
+    expect(broke.style).toBeCloseTo(0, 10);
+    expect(throwYoyo(broke).spin).toBe(120);
+  });
+
+  it("pays twice over: a Throw twice as hard is worth four times as much", () => {
+    // ADR 0001 chose linear decay for exactly this. A harder Throw earns faster *and* keeps
+    // the yoyo alive longer, so yield goes with the square: 100 Spin is worth 2.5 Style,
+    // 200 is worth 10, 300 is worth 22.5.
+    expect(throwYoyo(afterBuying(5)).spin).toBe(200);
+    expect(throwYoyo(afterBuying(10)).spin).toBe(300);
+
+    expect(yieldOfOneThrow(afterBuying(0))).toBeCloseTo(2.5, 10);
+    expect(yieldOfOneThrow(afterBuying(5))).toBeCloseTo(10, 10);
+    expect(yieldOfOneThrow(afterBuying(10))).toBeCloseTo(22.5, 10);
+  });
+
+  it("leaves the Sleeper on the string playing out as the player saw it thrown", () => {
+    const midSleeper = midSleeperWithStyle(1);
+
+    const bought = buyThrowPower(midSleeper);
+
+    // Same Spin, and the same four seconds of life and 1.6 Style still to come.
+    expect(bought.spin).toBe(midSleeper.spin);
+    expect(advance(bought, 4).style - bought.style).toBeCloseTo(1.6, 10);
+    expect(advance(bought, 4).phase).toBe("Rewinding");
+  });
+
+  it("shows up on the next Throw, once the yoyo is back in the hand", () => {
+    const midSleeper = midSleeperWithStyle(1);
+
+    const wound = advance(buyThrowPower(midSleeper), 10);
+
+    expect(throwYoyo(wound).spin).toBe(120);
+  });
+
+  it("is a purchase and not a tick: buying moves no time and earns nothing", () => {
+    const midSleeper = midSleeperWithStyle(1.4);
+
+    const bought = buyThrowPower(midSleeper);
+
+    expect(bought.phase).toBe(midSleeper.phase);
+    expect(bought.phaseElapsed).toBe(midSleeper.phaseElapsed);
+    expect(bought.spin).toBe(midSleeper.spin);
+    // Spending is not un-earning: the lifetime figure ADR 0005 will read never falls.
+    expect(bought.lifetimeStyle).toBe(midSleeper.lifetimeStyle);
+    expect(bought.style).toBeCloseTo(midSleeper.style - 10, 10);
+  });
+
+  it("survives a day away, and nothing in the game takes the level back", () => {
+    const bought = buyThrowPower(withStyle(10));
+
+    const aDayLater = advance(throwYoyo(bought), 24 * 60 * 60);
+
+    expect(throwYoyo(aDayLater).spin).toBe(120);
+  });
+});
+
+/**
+ * ADR 0008 makes `GameState` the save-compatibility surface, and says effective stats are
+ * derived rather than stored: were effective Throw Power written into a save, changing the
+ * step size or the base Throw Power in a rebalance would leave every existing save
+ * disagreeing with the constants it was built from.
+ *
+ * That is a claim about the shape of a save rather than about anything a player can see, so
+ * it needs an assertion of the kind the rest of this file avoids — as with the clock guard
+ * in `core-is-pure.test.ts`, the rule is invisible to behavioural tests, since a stored stat
+ * and a derived one agree right up until the rebalance. It is deliberately brittle: a field
+ * added here is a migration to think about, and this test is where that thought is asked
+ * for.
+ */
+describe("the shape a save has to carry", () => {
+  it("keeps the Gear level and not the Spin it buys", () => {
+    const played = advance(throwYoyo(buyThrowPower(withStyle(10))), 2);
+
+    expect(Object.keys(played).sort()).toEqual([
+      "lifetimeStyle",
+      "phase",
+      "phaseElapsed",
+      "spin",
+      "style",
+      "throwPowerLevel",
+      "version",
+    ]);
   });
 });

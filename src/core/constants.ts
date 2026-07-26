@@ -23,4 +23,17 @@ export const PROVISIONAL = {
    * altogether. The Rewind is dead time on purpose.
    */
   baseRewind: 3.0,
+  /** Spin added to `S₀` by each level of Throw Power. */
+  throwPowerPerLevel: 20,
+  /**
+   * Style cost of the first level of Throw Power.
+   *
+   * Absolute for now because there is only one Yoyo. ADR 0005 asks that Gear costs scale
+   * against the current Yoyo tier rather than sitting at absolute prices, so that the shop's
+   * early rows do not insult a player opening their eighth run — but tiers arrive with
+   * Retire, and this constant becomes a per-tier base then.
+   */
+  throwPowerBaseCost: 10,
+  /** What each level owned multiplies the cost of the next one by. */
+  throwPowerCostGrowth: 1.15,
 } as const;

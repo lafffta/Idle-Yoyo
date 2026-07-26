@@ -24,6 +24,8 @@ export type GameState = {
   spin: number;
   /** Seconds spent in the current phase. */
   phaseElapsed: number;
+  /** Gear. Retire will clear this later; nothing in the game resets it yet. */
+  throwPowerLevel: number;
 };
 
 export const SCHEMA_VERSION = 1;
@@ -36,12 +38,34 @@ export function initialState(): GameState {
     phase: "Ready",
     spin: 0,
     phaseElapsed: 0,
+    throwPowerLevel: 0,
   };
 }
 
-/** Derived, never stored. Gear levels will feed into this from #6 onwards. */
-export function throwPower(_state: GameState): number {
-  return PROVISIONAL.baseThrowPower;
+/** Derived from the Gear level, never stored. */
+export function throwPower(state: GameState): number {
+  return PROVISIONAL.baseThrowPower + PROVISIONAL.throwPowerPerLevel * state.throwPowerLevel;
+}
+
+/** What the next level of Throw Power costs. Geometric in the levels already owned. */
+export function throwPowerCost(state: GameState): number {
+  return PROVISIONAL.throwPowerBaseCost * PROVISIONAL.throwPowerCostGrowth ** state.throwPowerLevel;
+}
+
+/**
+ * Buy a level of Throw Power. A pure transition like `throwYoyo`: it moves Style into Gear
+ * and no time passes.
+ *
+ * The purchase applies to the *next* Throw. Spin is stored rather than derived, so a Sleeper
+ * already on the string keeps the Spin it was thrown with and plays out as the player saw it
+ * begin.
+ */
+export function buyThrowPower(state: GameState): GameState {
+  const cost = throwPowerCost(state);
+  // Refused rather than clamped: an unaffordable purchase leaves the state exactly as it was.
+  if (state.style < cost) return state;
+
+  return { ...state, style: state.style - cost, throwPowerLevel: state.throwPowerLevel + 1 };
 }
 
 /** Derived, never stored. The Bearing will feed into this from #7 onwards. */
