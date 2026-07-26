@@ -85,35 +85,23 @@ export function advance(state: GameState, seconds: number): GameState {
 
     const decay = decayRate(current);
     const untilDead = current.spin / decay;
+    const dies = remaining >= untilDead;
+    const dt = dies ? untilDead : remaining;
 
-    if (remaining < untilDead) {
-      const dt = remaining;
-      // The integral of k × Spin over the segment: Spin falls linearly across it, so the
-      // Style earned is the area under that line rather than the rate at either end.
-      const earned =
-        PROVISIONAL.stylePerSpinPerSecond * (current.spin * dt - (decay * dt * dt) / 2);
-      current = {
-        ...current,
-        spin: current.spin - decay * dt,
-        phaseElapsed: current.phaseElapsed + dt,
-        style: current.style + earned,
-        lifetimeStyle: current.lifetimeStyle + earned,
-      };
-      remaining = 0;
-    } else {
-      // The Dead Yoyo: an instant of transition, not a phase to sit in.
-      const earned =
-        (PROVISIONAL.stylePerSpinPerSecond * current.spin * current.spin) / (2 * decay);
-      current = {
-        ...current,
-        spin: 0,
-        phase: "Ready",
-        phaseElapsed: 0,
-        style: current.style + earned,
-        lifetimeStyle: current.lifetimeStyle + earned,
-      };
-      remaining -= untilDead;
-    }
+    // The integral of k × Spin across the segment: Spin falls linearly over it, so the
+    // Style earned is the area under that line, not the rate at either end of it.
+    const earned = PROVISIONAL.stylePerSpinPerSecond * (current.spin * dt - (decay * dt * dt) / 2);
+
+    current = {
+      ...current,
+      style: current.style + earned,
+      lifetimeStyle: current.lifetimeStyle + earned,
+      // The Dead Yoyo is the instant Spin reaches zero, not a phase to sit in.
+      ...(dies
+        ? { spin: 0, phase: "Ready" as const, phaseElapsed: 0 }
+        : { spin: current.spin - decay * dt, phaseElapsed: current.phaseElapsed + dt }),
+    };
+    remaining -= dt;
   }
 
   return current;
