@@ -224,8 +224,8 @@ export function advance(state: GameState, seconds: number): GameState {
  * disagree with this.
  */
 function uptime(state: GameState): number {
-  const spinning = throwPower(state) / decayRate(state);
-  return spinning / (spinning + rewindDuration(state));
+  const sleeperLength = throwPower(state) / decayRate(state);
+  return sleeperLength / (sleeperLength + rewindDuration(state));
 }
 
 /**

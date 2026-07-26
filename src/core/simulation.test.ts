@@ -364,6 +364,19 @@ function uptime(atRest: GameState): number {
   return sleeperLength(atRest) / throwCycleLength(atRest);
 }
 
+/**
+ * The Style a Sleeper already on the string goes on to bank between here and the Dead Yoyo,
+ * measured by playing it out.
+ *
+ * The sibling of `yieldOfOneThrow`, and deliberately not the same measurement: that one starts
+ * from a yoyo at rest and measures a whole Throw, this one starts wherever the Sleeper has got
+ * to. A Rewinding or Ready yoyo earns nothing, so overshooting the death costs nothing and this
+ * needs no notion of when the yoyo is due to die.
+ */
+function styleEarnedBeforeDying(state: GameState): number {
+  return advance(state, 10_000).style - state.style;
+}
+
 /** The Style one whole Sleeper earns, thrown from a yoyo at rest. */
 function yieldOfOneThrow(state: GameState): number {
   const thrown = throwYoyo(state);
@@ -935,6 +948,8 @@ describe("the Sustained Style readout", () => {
   });
 
   it("is raised by each of the three Gear stats, and by buying more of any of them", () => {
+    // Levels chosen to sit above the Rewind floor, which the twenty-fourth level of Rewind
+    // Speed reaches — see the test below for what happens past it.
     for (const buy of [afterBuyingThrowPower, afterBuyingBearing, afterBuyingRewindSpeed]) {
       const climbing = [0, 1, 4, 9].map((levels) => sustainedStyle(buy(levels)));
 
@@ -942,6 +957,32 @@ describe("the Sustained Style readout", () => {
         if (index > 0) expect(figure).toBeGreaterThan(climbing[index - 1] as number);
       }
     }
+  });
+
+  /**
+   * Rewind Speed is the one Gear stat whose effect on this figure runs out, and the readout has
+   * to be honest about it rather than keep implying a gain.
+   *
+   * At the Rewind floor `R` is pinned, so a further level moves Sustained Style by exactly
+   * nothing — the prototype on #3 priced level 25 at 796.64 Style for a delta of `+0.000000`
+   * and filed it as an affordance gap for the shop. It is not a fault in the floor: ADR 0003's
+   * floor exists to keep the *Bearing* working, which the guard further down proves it still
+   * does. What it means is that a shop row reading its before-and-after off this number will
+   * find no difference to show, and should say so.
+   */
+  it("stops responding to Rewind Speed once the Rewind is on its floor", () => {
+    const atTheFloor = afterBuyingRewindSpeed(24);
+    const wellPastIt = afterBuyingRewindSpeed(60);
+
+    // Still climbing on the way down to the floor, and flat from the floor onwards.
+    expect(sustainedStyle(atTheFloor)).toBeGreaterThan(sustainedStyle(afterBuyingRewindSpeed(23)));
+    expect(sustainedStyle(wellPastIt)).toBe(sustainedStyle(atTheFloor));
+    expect(sustainedStyle(afterBuyingRewindSpeed(200))).toBe(sustainedStyle(atTheFloor));
+
+    // The Bearing, meanwhile, keeps working down there — which is the whole point of the floor.
+    expect(sustainedStyle(afterShopping([buyRewindSpeed, 60], [buyBearing, 9]))).toBeGreaterThan(
+      sustainedStyle(wellPastIt),
+    );
   });
 });
 
@@ -994,15 +1035,6 @@ describe("the current Style rate readout", () => {
     expect(currentStyleRate(harder)).toBeCloseTo(2, 10);
   });
 });
-
-/**
- * The Style a Sleeper goes on to bank between here and the Dead Yoyo, measured by playing it
- * out. A Rewinding or Ready yoyo earns nothing, so overshooting the death costs nothing and
- * this needs no notion of when the yoyo is due to die.
- */
-function styleEarnedBeforeDying(state: GameState): number {
-  return advance(state, 10_000).style - state.style;
-}
 
 describe("the projected yield of the Throw in progress", () => {
   it("says 2.5 Style at the moment of an opening Throw, and is not an estimate", () => {
@@ -1124,6 +1156,36 @@ describe("the readouts as functions of the state in hand", () => {
       expect(projectedYield(playedSleeper)).toBe(projectedYield(freshSleeperAgain));
       expect(sustainedStyle(playedSleeper)).toBe(sustainedStyle(fresh));
     }
+  });
+});
+
+/**
+ * `GameState` declares `spin` "meaningful only while `Sleeping`", so both live readouts decide on
+ * the phase rather than on Spin having reached zero. Nothing the core does today tells those two
+ * apart — `advance` zeroes Spin at the Dead Yoyo — so this constructs a state directly, in the
+ * same spirit as the save-shape test below: a rule that behavioural tests cannot see, pinned
+ * where the thought is wanted.
+ *
+ * It is worth pinning because the licence is real and something will eventually use it. ADR 0003
+ * lists carrying leftover Spin into the next Throw among the Structural Tricks still open, and a
+ * migration or an older save can carry stale Spin regardless. A readout trusting Spin over the
+ * phase would have a winding string earning Style.
+ */
+describe("a save carrying Spin the yoyo is no longer spinning on", () => {
+  it("earns nothing and projects nothing while the string is winding back up", () => {
+    const winding: GameState = { ...advance(freshSleeper(), 5), spin: 80 };
+
+    expect(winding.phase).toBe("Rewinding");
+    expect(currentStyleRate(winding)).toBe(0);
+    expect(projectedYield(winding)).toBe(0);
+  });
+
+  it("earns nothing and projects nothing while the yoyo waits in the hand", () => {
+    const ready: GameState = { ...initialState(), spin: 80 };
+
+    expect(ready.phase).toBe("Ready");
+    expect(currentStyleRate(ready)).toBe(0);
+    expect(projectedYield(ready)).toBe(0);
   });
 });
 
