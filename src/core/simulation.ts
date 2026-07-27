@@ -35,7 +35,12 @@ export type GameState = {
   phase: Phase;
   /** Meaningful only while `Sleeping`. */
   spin: number;
-  /** Seconds spent in the current phase. */
+  /**
+   * Seconds spent in the current phase. Drives the Rewind to completion, and counts the age of
+   * the Sleeper on the string.
+   *
+   * Always zero while `Ready`, which is the one phase with nothing to measure — see `advance`.
+   */
   phaseElapsed: number;
   /** Gear. Retire will clear these later; nothing in the game resets them yet. */
   throwPowerLevel: number;
@@ -237,9 +242,17 @@ export function advance(state: GameState, seconds: number): GameState {
         continue;
       }
 
-      // Nothing happens here on its own, so the rest of the delta costs one step however
-      // long it is.
-      current = { ...current, phaseElapsed: current.phaseElapsed + remaining };
+      // Nothing happens here on its own, so the rest of the delta costs one step however long it
+      // is — and the time is consumed rather than recorded. `phaseElapsed` measures the phase it
+      // is in, and `Ready` has nothing to measure: nothing reads it here, and the only boundary
+      // ahead is a Throw, which no amount of waiting brings closer. Left to accumulate it would
+      // climb for as long as the yoyo sat in the hand, banking a month of meaningless seconds in
+      // a field ADR 0008 makes a compatibility surface.
+      //
+      // Cleared rather than merely left alone, so that the field is zero for every `Ready` state
+      // and not just the ones reached from here — a save written before this rule heals on the
+      // first frame after it loads. Guarded so that the ordinary wait still allocates nothing.
+      if (current.phaseElapsed !== 0) current = { ...current, phaseElapsed: 0 };
       remaining = 0;
       continue;
     }

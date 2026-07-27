@@ -23,6 +23,11 @@ function freshSleeper() {
   return throwYoyo(initialState());
 }
 
+/** The same Sleeper with an Auto-Thrower owned, so the cycle turns without a player. */
+function automaticSleeper(): GameState {
+  return throwYoyo(buyAutoThrower(withStyle(autoThrowerCost())));
+}
+
 describe("a Throw", () => {
   it("starts a Sleeper with Spin equal to the current Throw Power", () => {
     const sleeper = freshSleeper();
@@ -643,17 +648,22 @@ describe("buying Rewind Speed", () => {
 
   it("finishes a Rewind it has already outlasted at once, without the clock jumping", () => {
     // 2.9s into a 3s Rewind, one level of Rewind Speed makes the Rewind 2.7s — a Rewind the
-    // string has already spent longer on than it now takes. It ends immediately, and the
-    // 0.2s of overshoot is not handed back as extra time: half a second given is half a
-    // second passed. Left uncorrected that surplus becomes minted Style the moment an
-    // Auto-Thrower re-Throws into it.
-    const midRewind = advance({ ...freshSleeper(), style: 1000 }, 7.9);
+    // string has already spent longer on than it now takes. It ends immediately, and the 0.2s
+    // of overshoot is not handed back as extra time: half a second given is half a second
+    // passed.
+    //
+    // Watched by an Auto-Thrower, because that is both where the surplus would do damage and
+    // the only place it shows. Handed back, the 0.2s would be minted the instant the machine
+    // re-Throws, and the new Sleeper would be found 0.7s old with 86 Spin rather than 0.5s old
+    // with 90. A yoyo left waiting in the hand instead has nothing to spend the surplus on, so
+    // there is nothing to see: `Ready` records no time at all.
+    const midRewind = advance({ ...automaticSleeper(), style: 1000 }, 7.9);
     expect(midRewind.phase).toBe("Rewinding");
 
     const afterHalfASecond = advance(buyRewindSpeed(midRewind), 0.5);
 
-    expect(afterHalfASecond.phase).toBe("Ready");
-    expect(afterHalfASecond.phaseElapsed).toBeCloseTo(0.5, 10);
+    expect(afterHalfASecond.phase).toBe("Sleeping");
+    expect(afterHalfASecond.spin).toBeCloseTo(90, 10);
   });
 
   it("leaves the Sleeper alone: it is dead time it buys back, not spinning time", () => {
@@ -906,11 +916,6 @@ describe("buying the Auto-Thrower", () => {
     expect(bought.lifetimeStyle).toBeCloseTo(midSleeper.lifetimeStyle, 10);
   });
 });
-
-/** A Sleeper one Throw old, with an Auto-Thrower owned and the opening Gear. */
-function automaticSleeper(): GameState {
-  return throwYoyo(buyAutoThrower(withStyle(autoThrowerCost())));
-}
 
 describe("the Auto-Thrower keeping the loop turning", () => {
   it("throws again the instant the string is wound, spending no time at Ready", () => {
@@ -1526,6 +1531,46 @@ describe("the shape a save has to carry", () => {
       "throwPowerLevel",
       "version",
     ]);
+  });
+
+  /**
+   * `phaseElapsed` is held at zero throughout `Ready` — `advance` records the reasoning. What
+   * belongs here is that the rule is part of the save surface rather than part of the game: it
+   * is unobservable by definition, since a field nothing reads is a field nothing can show, so
+   * it needs the same brittle assertion the field set above gets.
+   *
+   * Making the field phase-specific in shape would say the same thing in the type rather than as
+   * an invariant, and was weighed. It costs a discriminated union across the save surface and
+   * every migration after it, to delete one number that is now always zero — more churn than one
+   * quiet phase justifies.
+   *
+   * A month resolves in one step, as it must: the O(1) short-circuit is what keeps a long Absence
+   * cheap, and this would not return at all if the wait were walked second by second.
+   */
+  it("counts no time against a yoyo that is only waiting to be Thrown", () => {
+    const wound = advance(freshSleeper(), 8);
+    expect(wound.phase).toBe("Ready");
+
+    const aMonthLater = advance(wound, 30 * 24 * 60 * 60);
+
+    expect(aMonthLater.phase).toBe("Ready");
+    expect(aMonthLater.phaseElapsed).toBe(0);
+  });
+
+  /**
+   * The rule above is a claim about every `Ready` state, not only the ones this version of
+   * `advance` produced. A save written before the counter was held at zero carries whatever it
+   * had already banked, and loading it must not leave the field disagreeing with what its own
+   * type says it holds. So the wait clears it rather than merely declining to add to it, and an
+   * old save heals on the first frame after it is loaded.
+   */
+  it("clears time an older save had already recorded against a waiting yoyo", () => {
+    const writtenBeforeTheRule: GameState = { ...initialState(), phaseElapsed: 2_592_000 };
+
+    const afterOneFrame = advance(writtenBeforeTheRule, 1 / 60);
+
+    expect(afterOneFrame.phase).toBe("Ready");
+    expect(afterOneFrame.phaseElapsed).toBe(0);
   });
 
   /**
