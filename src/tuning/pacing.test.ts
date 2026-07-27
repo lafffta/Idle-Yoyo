@@ -76,10 +76,14 @@ describe("the opening of the game", () => {
 
     const items = purchasesIn(report);
     const rewindSpeeds = items.flatMap((item, index) => (item === "Rewind Speed" ? [index] : []));
-    const severalIn = rewindSpeeds[several - 1];
+    // Where in the run several Rewind Speeds have been bought — the point after which the
+    // Bearing has to still be worth something. `Infinity` rather than a fallback that widens the
+    // slice: if the player never bought Rewind Speed several times the claim has nothing to
+    // stand on, and it should fail rather than quietly search the whole run.
+    const severalRewindSpeedsIn = rewindSpeeds[several - 1] ?? Infinity;
 
-    expect(severalIn).toBeDefined();
-    expect(items.slice((severalIn ?? 0) + 1)).toContain("Bearing");
+    expect(severalRewindSpeedsIn).toBeLessThan(items.length);
+    expect(items.slice(severalRewindSpeedsIn + 1)).toContain("Bearing");
   });
 });
 
