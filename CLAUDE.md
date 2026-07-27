@@ -57,4 +57,6 @@ Single-context — one `CONTEXT.md` and one `docs/adr/` at the repo root. See `d
 
 The simulation core runs and is under test, headless — there is no shell yet. `advance` carries the yoyo through all three phases of the Throw Cycle, all three Gear stats are buyable, the readouts are derived from stats, and an Auto-Thrower re-Throws the instant the string is wound. Time away is the ordinary simulation run forward, and ADR 0002's parity claim is now an assertion rather than an intention.
 
-The core-loop spec (#3) and all six of its tickets (#4–#9) are done, and nothing is ticketed after them. The spec's own Out of Scope section is the list of what it deliberately left: the shell, save and load, Tricks, Retire, and the tuning harness it recommends as the next spec.
+The core-loop spec (#3) and all six of its tickets (#4–#9) are done. The spec's own Out of Scope section is the list of what it deliberately left: the shell, save and load, Tricks and Retire.
+
+The tuning harness spec (#18) is the one it recommended next, and the first of its four tickets (#22) is done: `simulate(timeline) → Report` in `src/tuning`, outside the core and outside the built output, driving a scripted player who Throws by hand and buys nothing. `npm run tune` prints the Report. The purchase policy, the headline facts and the rot-guard assertions are the tickets after it — and per the spec, the harness is the instrument, not the retune.

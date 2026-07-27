@@ -22,7 +22,8 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 │   ├── agents/                ← this file and its siblings
 │   └── prototypes/            ← what a throwaway prototype settled
 └── src/
-    └── core/                  ← the pure simulation core (ADR 0008)
+    ├── core/                  ← the pure simulation core (ADR 0008)
+    └── tuning/                ← the tuning harness, outside the core and outside the build
 ```
 
 Should this repo ever grow a second bounded context, the multi-context form is a root `CONTEXT-MAP.md` pointing at one `CONTEXT.md` per context, with context-scoped ADRs under `src/<context>/docs/adr/`. Nothing here needs that today.

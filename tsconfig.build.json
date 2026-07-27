@@ -1,4 +1,7 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["src/**/*.test.ts"]
+  // The tuning harness is a development instrument and never reaches a player, so it is
+  // excluded here alongside the tests. ADR 0008 keeps the shipped code to the simulation core
+  // and the shell around it; `src/tuning` is neither.
+  "exclude": ["src/**/*.test.ts", "src/tuning"]
 }
