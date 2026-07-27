@@ -1,6 +1,19 @@
 import { PROVISIONAL } from "./constants.js";
 
 /**
+ * The simulation core (ADR 0008). Everything here is a pure function of the state it is given.
+ *
+ * **Time is a parameter, never an ambient fact: nothing in this module may call Date.now().**
+ * Neither may it reach for `performance`, `Math.random`, a timer, a `document` or a `window`.
+ * The same `advance` runs a frame while the tab is open and an overnight Absence when it is
+ * reopened, and ADR 0002's promise that those obey identical rules only holds while there is
+ * one implementation with no clock inside it. A wall clock here would pass every behavioural
+ * test in the suite, because two calls in the same run agree with each other — so the rule is
+ * enforced by `core-is-pure.test.ts`, which reads this file and fails on the ways it could
+ * stop being true.
+ */
+
+/**
  * The phase the yoyo is in. It is in exactly one of them at a time.
  *
  * A Dead Yoyo is the instant Spin reaches zero — the transition out of `Sleeping` — and
