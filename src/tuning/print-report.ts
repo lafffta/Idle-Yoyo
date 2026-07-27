@@ -68,8 +68,21 @@ const SESSION_COLUMNS: readonly Column<SessionRecord>[] = [
         ? formatStyle(record.styleEarnedDuringPrecedingAbsence)
         : "—",
   },
+  {
+    heading: "Machine",
+    width: 9,
+    of: (record) => {
+      if (record.precedingAbsenceSeconds === 0) return "—";
+      return record.autoThrowerDuringPrecedingAbsence ? "throwing" : "none";
+    },
+  },
   { heading: "Style earned", width: 14, of: (record) => formatStyle(record.styleEarned) },
-  { heading: "Throws", width: 8, of: (record) => String(record.manualThrows) },
+  { heading: "By hand", width: 9, of: (record) => String(record.manualThrows) },
+  {
+    heading: "Nothing affordable",
+    width: 20,
+    of: (record) => formatDuration(record.secondsWithNothingAffordable),
+  },
   {
     heading: "Sustained Style",
     width: 17,
@@ -91,7 +104,7 @@ type PurchaseRow = { readonly session: number; readonly purchase: Purchase };
 const PURCHASE_COLUMNS: readonly Column<PurchaseRow>[] = [
   { heading: "#", width: 3, of: (row) => String(row.session) },
   { heading: "At", width: 15, of: (row) => formatDuration(row.purchase.atSeconds) },
-  { heading: "Gear", width: 15, of: (row) => row.purchase.stat },
+  { heading: "Bought", width: 15, of: (row) => row.purchase.item },
   { heading: "Price", width: 12, of: (row) => formatStyle(row.purchase.price) },
 ];
 
@@ -119,15 +132,105 @@ function describeUnboughtGear(report: Report): string {
   return report.gearNeverBought.join(", ");
 }
 
+/**
+ * The Auto-Thrower's own block, printed apart from the tables because it is the question the
+ * harness was built to answer: ADR 0002 calls the price retention-critical and promises the
+ * player reaches one before their first Session ends.
+ *
+ * A refusal is stated as plainly as a purchase. If the price exceeds what the nights ahead are
+ * worth then declining is the right decision and this has to be able to say so — a Report that
+ * could only describe a purchase could never tell anyone the price was wrong.
+ */
+function describeAutoThrower(report: Report): string[] {
+  const machine = report.autoThrower;
+  const price = `Price                    ${formatStyle(machine.price)} Style`;
+
+  if (!machine.bought) {
+    return [
+      "Bought                   no — the player declined it every time they could have bought it",
+      "                         The Absences ahead were never worth its price, which is a finding",
+      "                         about the price rather than a failure to find one.",
+      `Throws made by hand      ${machine.manualThrows}, all of them`,
+      price,
+    ];
+  }
+
+  const sessions = report.sessions.length;
+
+  return [
+    `Bought                   yes, ${formatDuration(machine.atSeconds)} in, ` +
+      `during Session ${machine.session} of ${sessions}`,
+    `Within the first Session ${machine.inFirstSession ? "yes" : "no"} — ADR 0002 asks that it ` +
+      `be, and the first Session ends at ${formatDuration(FIRST_SESSION_SECONDS)}`,
+    `Throws made by hand      ${machine.manualThrowsBefore} before the machine took over`,
+    price,
+  ];
+}
+
+/**
+ * What an Absence earns with a machine working and what one earns without.
+ *
+ * The figures that quantify what the shop cannot show. Sustained Style does not move when an
+ * Auto-Thrower is bought — `hasAutoThrower` appears nowhere in it — so the headline readout ADR
+ * 0007 makes every other purchase legible through says nothing at all about this one.
+ *
+ * The counterfactual line is here for the run that matters most: a player who declines the
+ * machine has no Absence with one working to compare against, and without it the most valuable
+ * result the instrument can produce would print as a row of zeroes.
+ *
+ * Both a total and a rate, because either alone misleads. The rate is what makes two groups of
+ * different length comparable; the total is what stops a one-minute Absence holding a whole
+ * Sleeper from reading as a fine hourly income it could never sustain.
+ */
+function describeAbsences(report: Report): string[] {
+  const working = report.absencesWithAutoThrower;
+  const alone = report.absencesWithoutAutoThrower;
+  const counterfactual =
+    alone.seconds > 0 ? (report.styleAMachineWouldHaveEarned * 3600) / alone.seconds : 0;
+  const ratio = alone.style > 0 ? report.styleAMachineWouldHaveEarned / alone.style : 0;
+
+  const said: string[] = [];
+
+  if (alone.absences > 0) {
+    said.push(
+      `Left with no machine     ${formatStyle(alone.style)} Style across ${alone.absences} ` +
+        `Absences (${formatStyle(alone.stylePerHour)} per hour away)`,
+      `Those same Absences      ${formatStyle(report.styleAMachineWouldHaveEarned)} Style had a ` +
+        `machine been throwing (${formatStyle(counterfactual)} per hour)`,
+    );
+  }
+
+  if (working.absences > 0) {
+    said.push(
+      `With a machine throwing  ${formatStyle(working.style)} Style across ` +
+        `${working.absences} Absences (${formatStyle(working.stylePerHour)} per hour away)`,
+    );
+  }
+
+  if (ratio > 0) {
+    said.push(`The machine is worth     ${Math.round(ratio)}× the Style of an Absence without one`);
+  }
+
+  return said.length > 0 ? said : ["The player was never away, so a machine could earn nothing."];
+}
+
 function print(timeline: Timeline, report: Report): void {
+  const played = totalSeconds(timeline.filter((period) => period.kind === "Session"));
+
   const lines = [
     "Idle Yoyo — tuning harness",
     "",
     "Every constant in the game is provisional, and this Report describes the game exactly as",
-    "it is configured today (ADR 0009). This player improves their yoyo and never automates:",
-    "at every Throw Cycle boundary they buy whatever Gear adds the most Sustained Style per",
-    "Style spent over the play they have left, and they own no Auto-Thrower, so an Absence",
-    "earns them only whatever Sleeper was still on the string when they closed the tab.",
+    "it is configured today (ADR 0009). At every Throw Cycle boundary the player buys whatever",
+    "is worth the most Style per Style spent over the play they have left, and keeps buying",
+    "while anything is. The Auto-Thrower is one more row in that ranking, worth the Style the",
+    "Absences ahead would earn with it less the little they earn without one, so the player is",
+    "free to decline it forever.",
+    "",
+    "They never save. Anything affordable and worth buying is bought at once, so the moment",
+    "they first hold the Auto-Thrower's price is the moment they buy it — and a player who",
+    "banked their Style for it instead would reach it sooner. Read the time below as when this",
+    "player bought a machine, not as the earliest anyone could.",
     "",
     describeTimeline(timeline),
     `The first Session is assumed to last ${formatDuration(FIRST_SESSION_SECONDS)}. That is a` +
@@ -144,14 +247,25 @@ function print(timeline: Timeline, report: Report): void {
     headingRowOf(PURCHASE_COLUMNS),
     ...purchaseRows(report).map((row) => rowOf(PURCHASE_COLUMNS, row)),
     "",
-    `Final Sustained Style   ${report.finalSustainedStyle.toFixed(4)} Style/s`,
-    `Final Gear              Throw Power ${report.finalGear.throwPower}, ` +
+    "The Auto-Thrower",
+    ...describeAutoThrower(report),
+    "",
+    "What an Absence is worth",
+    ...describeAbsences(report),
+    "",
+    `Final Sustained Style    ${report.finalSustainedStyle.toFixed(4)} Style/s`,
+    `Final Gear               Throw Power ${report.finalGear.throwPower}, ` +
       `Bearing ${report.finalGear.bearing}, Rewind Speed ${report.finalGear.rewindSpeed}`,
-    `Gear never bought       ${describeUnboughtGear(report)}`,
+    `Gear never bought        ${describeUnboughtGear(report)}`,
     // ADR 0003 puts a floor under the Rewind because the Bearing stops working without one.
     // Whether a player can actually reach it in three days is the question that decides whether
     // the floor is load-bearing in practice or only in principle.
-    `Rewind at its floor     ${report.rewindReachedFloor ? "yes" : "no"}`,
+    `Rewind at its floor      ${report.rewindReachedFloor ? "yes" : "no"}`,
+    // Stretches with nothing in the shop the player could afford: they have already looked, and
+    // there is nothing to do but watch until the next boundary. Affordability, not worth — a row
+    // they can afford and decline is still a decision they got to make.
+    `Nothing affordable       ${formatDuration(report.secondsWithNothingAffordable)} of ` +
+      `${formatDuration(played)} played`,
   ];
 
   console.log(lines.join("\n"));
