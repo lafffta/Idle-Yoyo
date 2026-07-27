@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { Report } from "./simulate.js";
 import { simulate } from "./simulate.js";
 import type { Timeline } from "./timeline.js";
 import { CANONICAL_TIMELINE } from "./timeline.js";
@@ -26,11 +27,25 @@ import { CANONICAL_TIMELINE } from "./timeline.js";
 const STYLE_PER_THROW_CYCLE = 2.5;
 const SUSTAINED_STYLE_AT_OPENING = 0.3125;
 
-/** What the first level of each Gear stat costs, straight from the provisional constants. */
+/** Shop prices, straight from the provisional constants. */
 const FIRST_THROW_POWER_PRICE = 10;
+const AUTO_THROWER_PRICE = 500;
 
 const session = (seconds: number): Timeline[number] => ({ kind: "Session", seconds });
 const absence = (seconds: number): Timeline[number] => ({ kind: "Absence", seconds });
+
+/**
+ * The Auto-Thrower as the Report describes it once one has been bought.
+ *
+ * Fails the test outright if the player declined it, rather than handing back something
+ * half-shaped for the assertions after it to paper over — a run where nothing was automated is a
+ * different claim, and the tests above make it directly.
+ */
+function machineIn(report: Report) {
+  const { autoThrower } = report;
+  if (!autoThrower.bought) throw new Error("the player never bought an Auto-Thrower");
+  return autoThrower;
+}
 
 /** When each Session in a timeline opened and closed, in seconds since the run began. */
 function sessionWindows(timeline: Timeline): { opened: number; closed: number }[] {
@@ -94,7 +109,7 @@ describe("a player at the shop", () => {
     const report = simulate([session(40)]);
 
     expect(report.sessions[0]?.purchases).toEqual([
-      { stat: "Throw Power", price: FIRST_THROW_POWER_PRICE, atSeconds: 32 },
+      { item: "Throw Power", price: FIRST_THROW_POWER_PRICE, atSeconds: 32 },
     ]);
   });
 
@@ -130,7 +145,7 @@ describe("a player at the shop", () => {
 
     expect(report.sessions[0]?.purchases).toEqual([]);
     expect(report.sessions[1]?.purchases[0]).toEqual({
-      stat: "Throw Power",
+      item: "Throw Power",
       price: FIRST_THROW_POWER_PRICE,
       atSeconds: 3_632,
     });
@@ -169,22 +184,22 @@ describe("a player at the shop", () => {
     // 1.18ⁿ for Rewind Speed — written out rather than recomputed, so that a change to either
     // ladder shows up here as a disagreement.
     const opening = [
-      { stat: "Throw Power", price: 10, atSeconds: 32 },
-      { stat: "Throw Power", price: 11.5, atSeconds: 68 },
-      { stat: "Throw Power", price: 13.225, atSeconds: 98 },
-      { stat: "Throw Power", price: 15.20875, atSeconds: 120 },
-      { stat: "Throw Power", price: 17.4900625, atSeconds: 144 },
-      { stat: "Throw Power", price: 20.113572, atSeconds: 170 },
-      { stat: "Throw Power", price: 23.130608, atSeconds: 198 },
-      { stat: "Rewind Speed", price: 15, atSeconds: 213 },
-      { stat: "Throw Power", price: 26.600199, atSeconds: 242.4 },
+      { item: "Throw Power", price: 10, atSeconds: 32 },
+      { item: "Throw Power", price: 11.5, atSeconds: 68 },
+      { item: "Throw Power", price: 13.225, atSeconds: 98 },
+      { item: "Throw Power", price: 15.20875, atSeconds: 120 },
+      { item: "Throw Power", price: 17.4900625, atSeconds: 144 },
+      { item: "Throw Power", price: 20.113572, atSeconds: 170 },
+      { item: "Throw Power", price: 23.130608, atSeconds: 198 },
+      { item: "Rewind Speed", price: 15, atSeconds: 213 },
+      { item: "Throw Power", price: 26.600199, atSeconds: 242.4 },
     ];
 
     const purchases = report.sessions[0]?.purchases ?? [];
 
     expect(purchases).toHaveLength(opening.length);
     opening.forEach((expected, index) => {
-      expect(purchases[index]?.stat).toBe(expected.stat);
+      expect(purchases[index]?.item).toBe(expected.item);
       expect(purchases[index]?.price).toBeCloseTo(expected.price, 6);
       expect(purchases[index]?.atSeconds).toBeCloseTo(expected.atSeconds, 6);
     });
@@ -198,11 +213,165 @@ describe("a player at the shop", () => {
     // that still pay are bought dozens more times.
     const report = simulate([session(86_400)]);
 
-    const stats = report.sessions.flatMap((record) => record.purchases).map((buy) => buy.stat);
-    const afterTheLastRewindSpeed = stats.length - 1 - stats.lastIndexOf("Rewind Speed");
+    const items = report.sessions.flatMap((record) => record.purchases).map((buy) => buy.item);
+    const afterTheLastRewindSpeed = items.length - 1 - items.lastIndexOf("Rewind Speed");
 
     expect(report.rewindReachedFloor).toBe(true);
     expect(afterTheLastRewindSpeed).toBeGreaterThan(10);
+  });
+});
+
+describe("the Auto-Thrower", () => {
+  it("is declined when there is no Absence ahead for it to earn in", () => {
+    // An Auto-Thrower buys absence, not speed: it makes a Throw the player would have made
+    // anyway, so a player who never closes the tab is no better off for owning one. With no
+    // Absence in the timeline it is worth exactly nothing, and the same positivity rule that
+    // declines Rewind Speed at its floor declines this.
+    const report = simulate([session(3_600)]);
+
+    expect(report.autoThrower.bought).toBe(false);
+  });
+
+  it("is declined when a moment away is worth less than the Sleeper already on the string", () => {
+    // A second away earns a second of Sustained Style with a machine, against the whole of the
+    // Sleeper the player would have left spinning without one. The machine is worth less than
+    // nothing here, and refusing it is the right answer rather than a failure to find one.
+    const report = simulate([session(3_600), absence(1), session(60)]);
+
+    expect(report.autoThrower.bought).toBe(false);
+  });
+
+  it("is bought once the player can afford one and the nights ahead are worth more than Gear", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    expect(report.autoThrower.bought).toBe(true);
+    expect(machineIn(report).atSeconds).toBeGreaterThan(0);
+  });
+
+  it("is bought once and never again", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const machines = report.sessions
+      .flatMap((record) => record.purchases)
+      .filter((purchase) => purchase.item === "Auto-Thrower");
+
+    expect(machines).toHaveLength(1);
+  });
+
+  it("takes over the Throwing, so the player never Throws by hand again", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const afterwards = report.sessions.filter(
+      (record) => record.session > machineIn(report).session,
+    );
+
+    expect(afterwards.length).toBeGreaterThan(0);
+    for (const record of afterwards) expect(record.manualThrows).toBe(0);
+  });
+
+  it("earns Sustained Style right through the night once it is owned", () => {
+    // The whole of ADR 0002's promise in one assertion: an Absence with a machine working is
+    // the ordinary Throw Cycle repeating, so it earns the same rate the player watched. Within
+    // a cycle's worth, because the night ends part-way through whatever Sleeper is in flight.
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const nightsWithAMachine = report.sessions.filter(
+      (record, index) => index > 0 && record.autoThrowerDuringPrecedingAbsence,
+    );
+
+    expect(nightsWithAMachine.length).toBeGreaterThan(0);
+    for (const record of nightsWithAMachine) {
+      // Nothing is bought while the player is away, so the rate through the whole Absence is
+      // the one they left the game at.
+      const rate = report.sessions[record.session - 2]?.sustainedStyleAtClose ?? 0;
+      const night = rate * record.precedingAbsenceSeconds;
+
+      expect(record.styleEarnedDuringPrecedingAbsence).toBeGreaterThan(0.99 * night);
+      expect(record.styleEarnedDuringPrecedingAbsence).toBeLessThan(1.01 * night);
+    }
+  });
+});
+
+describe("the Report's headline facts", () => {
+  it("says plainly that the player declined the Auto-Thrower when they did", () => {
+    const report = simulate([session(3_600)]);
+
+    expect(report.autoThrower).toEqual({
+      bought: false,
+      manualThrows: report.sessions[0]?.manualThrows,
+      price: AUTO_THROWER_PRICE,
+    });
+  });
+
+  it("places the first Auto-Thrower in the Session it was bought in", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const machine = machineIn(report);
+    const window = sessionWindows(CANONICAL_TIMELINE)[machine.session - 1];
+
+    expect(window).toBeDefined();
+    expect(machine.atSeconds).toBeGreaterThanOrEqual(window?.opened ?? 0);
+    expect(machine.atSeconds).toBeLessThan(window?.closed ?? 0);
+    expect(machine.inFirstSession).toBe(machine.session === 1);
+  });
+
+  it("counts the Throws the player made by hand before the machine took over", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const machine = machineIn(report);
+    const byHand = report.sessions
+      .filter((record) => record.session <= machine.session)
+      .reduce((total, record) => total + record.manualThrows, 0);
+
+    expect(machine.manualThrowsBefore).toBe(byHand);
+    expect(machine.manualThrowsBefore).toBeGreaterThan(0);
+  });
+
+  it("states what an Absence earns with a machine working and what one earns without", () => {
+    // The figure that quantifies what the shop cannot show. Sustained Style does not move when
+    // an Auto-Thrower is bought, so this comparison is the only place its value is legible.
+    const report = simulate(CANONICAL_TIMELINE);
+
+    expect(report.absencesWithAutoThrower.absences).toBeGreaterThan(0);
+    expect(report.absencesWithoutAutoThrower.absences).toBeGreaterThan(0);
+    expect(report.absencesWithAutoThrower.stylePerHour).toBeGreaterThan(
+      report.absencesWithoutAutoThrower.stylePerHour,
+    );
+  });
+
+  it("says what the nights would have been worth even when the player never automated", () => {
+    // The case the instrument exists for. With no Absence a machine ever worked through there is
+    // nothing measured to compare against, so a refusal would otherwise print as a blank — and a
+    // designer asking whether 500 is the wrong price would be told nothing at all.
+    const report = simulate([session(3_600), absence(1), session(60)]);
+
+    expect(report.autoThrower.bought).toBe(false);
+    expect(report.absencesWithAutoThrower.absences).toBe(0);
+    expect(report.styleAMachineWouldHaveEarned).toBeGreaterThan(
+      report.absencesWithoutAutoThrower.style,
+    );
+  });
+
+  it("states how long the player spent with nothing in the shop they could afford", () => {
+    // Thirty-two seconds of Throw Cycles before the cheapest row is affordable, and the Session
+    // closes on the boundary that would have opened the shop — so the whole of it was a stretch
+    // with no decision in it.
+    const report = simulate([session(32)]);
+
+    expect(report.secondsWithNothingAffordable).toBeCloseTo(32, 10);
+    expect(report.sessions[0]?.secondsWithNothingAffordable).toBeCloseTo(32, 10);
+  });
+
+  it("stops counting dead time once the player has something worth deciding about", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const played = CANONICAL_TIMELINE.filter((period) => period.kind === "Session").reduce(
+      (total, period) => total + period.seconds,
+      0,
+    );
+
+    expect(report.secondsWithNothingAffordable).toBeGreaterThan(0);
+    expect(report.secondsWithNothingAffordable).toBeLessThan(played);
   });
 });
 
@@ -256,14 +425,31 @@ describe("the Report for the canonical timeline", () => {
     expect(last).toBeLessThan(first);
   });
 
-  it("earns less across a whole Absence than in the Session that follows it", () => {
-    // Nothing re-Throws the yoyo while the player is away, so an Absence earns only whatever
-    // Sleeper was left on the string — worth more and more as the Bearing keeps the yoyo alive
-    // longer, but never a night's worth of anything. This is the gap an Auto-Thrower closes.
+  it("earns less across a whole night than in the play that follows, until a machine is working", () => {
+    // Nothing re-Throws the yoyo while the player is away, so an unattended Absence earns only
+    // whatever Sleeper was left on the string — worth more and more as the Bearing keeps the
+    // yoyo alive longer, but never a night's worth of anything. This is the gap the
+    // Auto-Thrower closes, and the reason the run stops looking like this once one is bought.
     const report = simulate(CANONICAL_TIMELINE);
 
-    for (const record of report.sessions) {
+    const unattended = report.sessions.filter(
+      (record) => record.precedingAbsenceSeconds > 0 && !record.autoThrowerDuringPrecedingAbsence,
+    );
+
+    expect(unattended.length).toBeGreaterThan(0);
+    for (const record of unattended) {
       expect(record.styleEarnedDuringPrecedingAbsence).toBeLessThan(record.styleEarned);
+    }
+  });
+
+  it("earns more across a night than in a whole day of play once a machine is working", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const attended = report.sessions.filter((record) => record.autoThrowerDuringPrecedingAbsence);
+
+    expect(attended.length).toBeGreaterThan(0);
+    for (const record of attended) {
+      expect(record.styleEarnedDuringPrecedingAbsence).toBeGreaterThan(record.styleEarned);
     }
   });
 
