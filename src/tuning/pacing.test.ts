@@ -93,15 +93,21 @@ describe("the Auto-Thrower", () => {
    *
    * The spec asked for a test that fails if the Auto-Thrower stops being reachable within the
    * first Session. At the constants as they stand it is not reachable within the first Session:
-   * this player reaches theirs some twenty hours in, in the fourth Session, and the Report says
-   * so in as many words through `inFirstSession`. Asserting the promise would fail the suite on
-   * landing; asserting its negation would be a guard that the game stays broken, and would fail
-   * on the very change that fixes it.
+   * this player banks Style from the opening boundary, buys nothing at all for the whole of the
+   * first Session, and is still 125 Style short when it ends — reaching 500 six minutes and forty
+   * seconds into the second. The Report says so in as many words through `inFirstSession`.
+   * Asserting the promise would fail the suite on landing; asserting its negation would be a
+   * guard that the game stays broken, and would fail on the very change that fixes it.
    *
    * So the claim is weakened to what is true — that a machine is reached at all — and the gap
    * itself is raised against the constants as #29 rather than papered over here. #18 puts
    * retuning explicitly out of scope, and moving a constant to make a test pass on an
    * instrument's first run is what its Further Notes caution against in as many words.
+   *
+   * ADR 0010 is why this figure is now the one worth arguing with. The player it was first
+   * measured on could not save at all, so the twenty hours it reported were an artefact of the
+   * instrument rather than of the price; this player saves optimally for it from the first
+   * boundary and still misses, which is a claim about the 500.
    *
    * When the constants are retuned, the stronger claim belongs here.
    */

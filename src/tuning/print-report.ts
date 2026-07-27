@@ -83,6 +83,7 @@ const SESSION_COLUMNS: readonly Column<SessionRecord>[] = [
     width: 20,
     of: (record) => formatDuration(record.secondsWithNothingAffordable),
   },
+  { heading: "Saving", width: 8, of: (record) => formatDuration(record.secondsSpentSaving) },
   {
     heading: "Sustained Style",
     width: 17,
@@ -227,10 +228,13 @@ function print(timeline: Timeline, report: Report): void {
     "Absences ahead would earn with it less the little they earn without one, so the player is",
     "free to decline it forever.",
     "",
-    "They never save. Anything affordable and worth buying is bought at once, so the moment",
-    "they first hold the Auto-Thrower's price is the moment they buy it — and a player who",
-    "banked their Style for it instead would reach it sooner. Read the time below as when this",
-    "player bought a machine, not as the earliest anyone could.",
+    "They will bank Style for a row they cannot yet afford, ranking it over what would be left",
+    "of the run once they had saved for it — so a wait costs a purchase the earnings it gives",
+    "up, and anything out of reach of the whole run is worth nothing and declines itself.",
+    "",
+    "It is a good rule and not the best one: buying now also shortens the wait for everything",
+    "after it, which no rule ranking one purchase at a time can weigh. Read a time below as",
+    "when this player got there, not as the earliest anyone could.",
     "",
     describeTimeline(timeline),
     `The first Session is assumed to last ${formatDuration(FIRST_SESSION_SECONDS)}. That is a` +
@@ -265,6 +269,11 @@ function print(timeline: Timeline, report: Report): void {
     // there is nothing to do but watch until the next boundary. Affordability, not worth — a row
     // they can afford and decline is still a decision they got to make.
     `Nothing affordable       ${formatDuration(report.secondsWithNothingAffordable)} of ` +
+      `${formatDuration(played)} played`,
+    // The opposite finding, and never the same seconds: time the player spent holding Style they
+    // could have spent, banking towards something dearer. Dead time means the shop opens above
+    // what the game pays and the prices are wrong; this is the shop working.
+    `Spent saving             ${formatDuration(report.secondsSpentSaving)} of ` +
       `${formatDuration(played)} played`,
   ];
 

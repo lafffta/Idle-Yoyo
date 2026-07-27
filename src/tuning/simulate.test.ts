@@ -19,9 +19,12 @@ import { CANONICAL_TIMELINE } from "./timeline.js";
  * figure only this configuration produces would fail on every deliberate rebalance.
  *
  * `buys the row worth the most Style per Style spent` is the deliberate exception, and #23 asks
- * for it in as many words — a greedy policy over a horizon fails by producing a plausible number
- * rather than by crashing, so one run of it is worked through by hand in full. It will need
- * rewriting when the constants are, and that is the price of having checked.
+ * for it in as many words — a policy that ranks rows over a horizon fails by producing a
+ * plausible number rather than by crashing, so one run of it is worked through by hand in full.
+ * It will need rewriting when the constants are, and that is the price of having checked. It was
+ * rewritten once already, when ADR 0010 let the player save: the sequence it names was re-derived
+ * from the closed forms rather than read back off the harness, which is the only way it can go on
+ * being capable of disagreeing.
  */
 
 const STYLE_PER_THROW_CYCLE = 2.5;
@@ -168,16 +171,21 @@ describe("a player at the shop", () => {
     // seven straight levels of Throw Power, because nothing else is ever affordable at the
     // moment the player can afford anything at all.
     //
-    // At 213s that breaks. The player holds 16.03 Style, an eighth level of Throw Power is
-    // 26.60 and the Bearing 25 — both out of reach — and the only thing they can buy is the
-    // first level of Rewind Speed at 15. So they buy it, poor value or not: declining would
-    // bank Style against nothing.
+    // At 213s that breaks, and this is the moment the whole test is for. The player holds 16.03
+    // Style. An eighth level of Throw Power is 26.60 and the Bearing 25 — neither affordable —
+    // and the one row they can buy is the first level of Rewind Speed at 15.
     //
-    // At 242.4s the player holds 29.83 and can afford both the eighth level of Throw Power at
-    // 26.60 and a second of Rewind Speed at 17.70. Throw Power adds 0.0968 to Sustained Style
-    // for its 26.60 and Rewind Speed 0.0183 for its 17.70 — 0.00364 per Style against 0.00104
-    // — so the dearer row wins, and this is the moment that would go wrong if the harness
-    // ranked by price or valued a candidate against the wrong span.
+    // They decline it. Sustained Style is 0.96/s, so the 10.57 Style they are short of Throw
+    // Power is 11.01 seconds of saving, leaving 25.99 of the Session to collect over: Throw
+    // Power adds 0.09625 across those 25.99 seconds for its 26.60, or 0.0940 Style per Style
+    // spent. Rewind Speed adds 0.01959 across the full 37 seconds left for its 15, or 0.0483 —
+    // half as much. So the player banks instead, and buys Throw Power at the next boundary at
+    // 228s, fifteen seconds later.
+    //
+    // That is the assertion that fails if the wait is ever costed wrongly. Charge nothing for
+    // it and the player would decline Rewind Speed here and everywhere else too; charge the
+    // whole Session for it and they would take the affordable row as the old greedy policy did.
+    // Rewind Speed is bought at 244s regardless, sixteen seconds later than it once was.
     const report = simulate([session(250)]);
 
     // Prices are the geometric ladders the shop is priced on — 10 × 1.15ⁿ for Throw Power, 15 ×
@@ -191,8 +199,8 @@ describe("a player at the shop", () => {
       { item: "Throw Power", price: 17.4900625, atSeconds: 144 },
       { item: "Throw Power", price: 20.113572, atSeconds: 170 },
       { item: "Throw Power", price: 23.130608, atSeconds: 198 },
-      { item: "Rewind Speed", price: 15, atSeconds: 213 },
-      { item: "Throw Power", price: 26.600199, atSeconds: 242.4 },
+      { item: "Throw Power", price: 26.600199, atSeconds: 228 },
+      { item: "Rewind Speed", price: 15, atSeconds: 244 },
     ];
 
     const purchases = report.sessions[0]?.purchases ?? [];
@@ -218,6 +226,66 @@ describe("a player at the shop", () => {
 
     expect(report.rewindReachedFloor).toBe(true);
     expect(afterTheLastRewindSpeed).toBeGreaterThan(10);
+  });
+});
+
+describe("a player saving up", () => {
+  it("declines a row it can afford when a better one is within saving distance", () => {
+    // An hour of play with a whole day away after it. A level of Throw Power is affordable four
+    // Throw Cycles in and adds 0.0875 to Sustained Style — 317 Style over the hour that remains,
+    // for its 10, or 31.7 Style per Style spent. The Auto-Thrower is 500, which at the opening
+    // rate is 1,600 seconds of saving, and it earns 0.3125/s right through the 86,400 seconds
+    // away less the one Sleeper the player would have left spinning anyway: 26,997 Style for its
+    // 500, or 54.0 per Style spent.
+    //
+    // So the machine is the better buy from the very first boundary, and the player who cannot
+    // bank Style would never once hold its price — they would spend every Throw Cycle's earnings
+    // on a row worth a third as much and reach the day away with no machine to work through it.
+    const report = simulate([session(3_600), absence(86_400), session(60)]);
+
+    expect(report.sessions[0]?.purchases[0]?.item).toBe("Auto-Thrower");
+  });
+
+  it("goes on buying when what it wants is out of reach of the whole run", () => {
+    // The same day away, and the same Auto-Thrower worth a fortune to a player who could get one
+    // — but only 260 seconds of play in the entire timeline, against the 1,600 the opening rate
+    // needs to bank 500. Saving for it would swallow every second the player has and leave them
+    // holding the price at the moment the run ends, with nothing ahead to earn in.
+    //
+    // A player who could only rank rows they could afford would be safe from this, and a player
+    // who ranked everything and simply waited for the best would buy nothing for 260 seconds and
+    // finish the run on the yoyo they started with. Neither is wanted: the row is valued over
+    // what would be left after the saving, which here is nothing at all, so it declines itself
+    // and the player spends the run improving the yoyo.
+    const report = simulate([session(200), absence(86_400), session(60)]);
+
+    expect(report.autoThrower.bought).toBe(false);
+    expect(report.sessions[0]?.purchases.length).toBeGreaterThan(0);
+    expect(report.finalSustainedStyle).toBeGreaterThan(SUSTAINED_STYLE_AT_OPENING);
+  });
+
+  it("reports the stretch it spent banking Style", () => {
+    // The saving run again. Its first 32 seconds are the four Throw Cycles before the cheapest
+    // row in the shop is affordable at all, and nothing about them is a decision. Every second
+    // from there to the machine is the opposite: the player can afford Throw Power at every
+    // boundary and passes it over every time, which is what this figure counts.
+    //
+    // At least that stretch, rather than exactly it — banking is not something the player does
+    // once. They go on doing it for Gear after the machine is bought, whenever the row worth the
+    // most is a level or two out of reach, and those stretches are in the figure too.
+    const report = simulate([session(3_600), absence(86_400), session(60)]);
+
+    expect(report.secondsSpentSaving).toBeGreaterThanOrEqual(machineIn(report).atSeconds - 32);
+  });
+
+  it("counts a shop it cannot reach as dead time and not as saving", () => {
+    // The two figures answer opposite questions and must never answer the same second. Here the
+    // player holds under 10 Style for the whole Session and has nothing to decide about: that is
+    // a dead shop, which is a fault in the prices, and not a player banking towards something.
+    const report = simulate([session(32)]);
+
+    expect(report.secondsWithNothingAffordable).toBeCloseTo(32, 10);
+    expect(report.secondsSpentSaving).toBe(0);
   });
 });
 
