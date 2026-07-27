@@ -1,4 +1,4 @@
-import type { GearLevels, Report, SessionRecord } from "./simulate.js";
+import type { GearLevels, Purchase, Report, SessionRecord } from "./simulate.js";
 import { simulate } from "./simulate.js";
 import type { Timeline } from "./timeline.js";
 import { CANONICAL_TIMELINE, FIRST_SESSION_SECONDS } from "./timeline.js";
@@ -36,11 +36,22 @@ function formatGear(gear: GearLevels): string {
   return `${gear.throwPower} / ${gear.bearing} / ${gear.rewindSpeed}`;
 }
 
-const COLUMNS: readonly {
+/** One column of a right-aligned fixed-width table. Both tables below are described this way. */
+type Column<Row> = {
   readonly heading: string;
   readonly width: number;
-  readonly of: (record: SessionRecord) => string;
-}[] = [
+  readonly of: (row: Row) => string;
+};
+
+function headingRowOf<Row>(columns: readonly Column<Row>[]): string {
+  return columns.map((column) => column.heading.padStart(column.width)).join("");
+}
+
+function rowOf<Row>(columns: readonly Column<Row>[], row: Row): string {
+  return columns.map((column) => column.of(row).padStart(column.width)).join("");
+}
+
+const SESSION_COLUMNS: readonly Column<SessionRecord>[] = [
   { heading: "#", width: 3, of: (record) => String(record.session) },
   { heading: "Session", width: 9, of: (record) => formatDuration(record.seconds) },
   {
@@ -64,13 +75,30 @@ const COLUMNS: readonly {
     width: 17,
     of: (record) => record.sustainedStyleAtClose.toFixed(4),
   },
-  { heading: "Gear", width: 13, of: (record) => formatGear(record.gearAtClose) },
+  { heading: "Bought", width: 8, of: (record) => String(record.purchases.length) },
+  { heading: "Gear", width: 16, of: (record) => formatGear(record.gearAtClose) },
 ];
 
-const headingRow = COLUMNS.map((column) => column.heading.padStart(column.width)).join("");
+/**
+ * Every purchase in the run, one to a line.
+ *
+ * Long rather than summarised on purpose: user story 7 asks that a bad pace be traceable to a
+ * specific purchase, and a count per Session cannot do that. The table above is what two runs are
+ * compared by; this is what a surprise in the table is read against.
+ */
+type PurchaseRow = { readonly session: number; readonly purchase: Purchase };
 
-function sessionRow(record: SessionRecord): string {
-  return COLUMNS.map((column) => column.of(record).padStart(column.width)).join("");
+const PURCHASE_COLUMNS: readonly Column<PurchaseRow>[] = [
+  { heading: "#", width: 3, of: (row) => String(row.session) },
+  { heading: "At", width: 15, of: (row) => formatDuration(row.purchase.atSeconds) },
+  { heading: "Gear", width: 15, of: (row) => row.purchase.stat },
+  { heading: "Price", width: 12, of: (row) => formatStyle(row.purchase.price) },
+];
+
+function purchaseRows(report: Report): PurchaseRow[] {
+  return report.sessions.flatMap((record) =>
+    record.purchases.map((purchase) => ({ session: record.session, purchase })),
+  );
 }
 
 function totalSeconds(timeline: Timeline): number {
@@ -86,13 +114,20 @@ function describeTimeline(timeline: Timeline): string {
   return `${sessions.length} Sessions and ${absences.length} Absences — ${played} of play across ${elapsed}.`;
 }
 
+function describeUnboughtGear(report: Report): string {
+  if (report.gearNeverBought.length === 0) return "none — every Gear row was bought at least once";
+  return report.gearNeverBought.join(", ");
+}
+
 function print(timeline: Timeline, report: Report): void {
   const lines = [
     "Idle Yoyo — tuning harness",
     "",
     "Every constant in the game is provisional, and this Report describes the game exactly as",
-    "it is configured today (ADR 0009). This player buys nothing at all: they earn and never",
-    "spend, so the Gear levels below stand still by construction.",
+    "it is configured today (ADR 0009). This player improves their yoyo and never automates:",
+    "at every Throw Cycle boundary they buy whatever Gear adds the most Sustained Style per",
+    "Style spent over the play they have left, and they own no Auto-Thrower, so an Absence",
+    "earns them only whatever Sleeper was still on the string when they closed the tab.",
     "",
     describeTimeline(timeline),
     `The first Session is assumed to last ${formatDuration(FIRST_SESSION_SECONDS)}. That is a` +
@@ -102,12 +137,21 @@ function print(timeline: Timeline, report: Report): void {
     "",
     "Gear reads Throw Power / Bearing / Rewind Speed.",
     "",
-    headingRow,
-    ...report.sessions.map(sessionRow),
+    headingRowOf(SESSION_COLUMNS),
+    ...report.sessions.map((record) => rowOf(SESSION_COLUMNS, record)),
+    "",
+    "Purchases",
+    headingRowOf(PURCHASE_COLUMNS),
+    ...purchaseRows(report).map((row) => rowOf(PURCHASE_COLUMNS, row)),
     "",
     `Final Sustained Style   ${report.finalSustainedStyle.toFixed(4)} Style/s`,
     `Final Gear              Throw Power ${report.finalGear.throwPower}, ` +
       `Bearing ${report.finalGear.bearing}, Rewind Speed ${report.finalGear.rewindSpeed}`,
+    `Gear never bought       ${describeUnboughtGear(report)}`,
+    // ADR 0003 puts a floor under the Rewind because the Bearing stops working without one.
+    // Whether a player can actually reach it in three days is the question that decides whether
+    // the floor is load-bearing in practice or only in principle.
+    `Rewind at its floor     ${report.rewindReachedFloor ? "yes" : "no"}`,
   ];
 
   console.log(lines.join("\n"));
