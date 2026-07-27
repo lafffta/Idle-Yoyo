@@ -32,10 +32,29 @@ const SUSTAINED_STYLE_AT_OPENING = 0.3125;
 
 /** Shop prices, straight from the provisional constants. */
 const FIRST_THROW_POWER_PRICE = 10;
-const AUTO_THROWER_PRICE = 500;
+const AUTO_THROWER_PRICE = 250;
 
 const session = (seconds: number): Timeline[number] => ({ kind: "Session", seconds });
 const absence = (seconds: number): Timeline[number] => ({ kind: "Absence", seconds });
+
+/**
+ * A run with the player away once before they can afford a machine and again after they own one,
+ * so that both kinds of Absence appear in the same Report.
+ *
+ * The canonical timeline no longer offers one. At the price the game now charges the machine is
+ * bought part-way through the first Session, before the player has ever been away, so every
+ * Absence in that run has a machine working through it — which is ADR 0002's promise being kept
+ * rather than a gap in the Report. The claims below are about what the two kinds of night are
+ * worth, so they need a run built to hold one of each: ten minutes is too short to bank 250, and
+ * the half-hour that follows the first night is long enough to finish banking it.
+ */
+const AWAY_BEFORE_AND_AFTER: Timeline = [
+  session(600),
+  absence(28_800),
+  session(1_800),
+  absence(28_800),
+  session(900),
+];
 
 /**
  * The Auto-Thrower as the Report describes it once one has been bought.
@@ -398,7 +417,7 @@ describe("the Report's headline facts", () => {
   it("states what an Absence earns with a machine working and what one earns without", () => {
     // The figure that quantifies what the shop cannot show. Sustained Style does not move when
     // an Auto-Thrower is bought, so this comparison is the only place its value is legible.
-    const report = simulate(CANONICAL_TIMELINE);
+    const report = simulate(AWAY_BEFORE_AND_AFTER);
 
     expect(report.absencesWithAutoThrower.absences).toBeGreaterThan(0);
     expect(report.absencesWithoutAutoThrower.absences).toBeGreaterThan(0);
@@ -498,7 +517,7 @@ describe("the Report for the canonical timeline", () => {
     // whatever Sleeper was left on the string — worth more and more as the Bearing keeps the
     // yoyo alive longer, but never a night's worth of anything. This is the gap the
     // Auto-Thrower closes, and the reason the run stops looking like this once one is bought.
-    const report = simulate(CANONICAL_TIMELINE);
+    const report = simulate(AWAY_BEFORE_AND_AFTER);
 
     const unattended = report.sessions.filter(
       (record) => record.precedingAbsenceSeconds > 0 && !record.autoThrowerDuringPrecedingAbsence,

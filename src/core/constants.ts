@@ -62,11 +62,23 @@ export const PROVISIONAL = {
   /**
    * Style cost of the Auto-Thrower, bought once and owned forever.
    *
-   * The most load-bearing number in this file, and the one to attack first once a tuning
-   * harness exists. ADR 0002 calls it retention-critical: until the player owns one, closing
-   * the game earns them almost nothing, so a price beyond the first session loses players
-   * before they ever see the game become idle. 500 is a guess aimed at ten to fifteen minutes
-   * in — around 200 Throws by hand at the opening rate, less as Gear is bought.
+   * The most load-bearing number in this file, and the only one here that has been measured
+   * rather than guessed. ADR 0002 calls it retention-critical: until the player owns one,
+   * closing the game earns them almost nothing, so a price beyond the first Session loses
+   * players before they ever see the game become idle.
+   *
+   * It opened at 500, which was a guess, and the tuning harness found that guess wrong — a
+   * first Session yields 375 Style to a player who banks every last one of them, so 500 was
+   * 133% of everything the opening could pay and no play could reach it (#29). The price was
+   * swept against the harness and 250 chosen from what came back: the machine lands 13m 20s
+   * in, some 100 Throws by hand, with a third of the first Session still to spare so that a
+   * later rebalance does not quietly push it back out. 350 also lands inside the Session, with
+   * eighty seconds to spare, which is not margin enough to rely on.
+   *
+   * Where in the 200–300 band it sits is a judgement the harness cannot make: every value in
+   * it keeps ADR 0002's promise, and they differ only in how long the manual opening lasts.
+   * The band is the measured part; 250 within it is a choice, taken to match the ten to fifteen
+   * minutes the core-loop spec asked for.
    */
-  autoThrowerCost: 500,
+  autoThrowerCost: 250,
 } as const;

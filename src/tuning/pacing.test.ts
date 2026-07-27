@@ -13,10 +13,11 @@ import { CANONICAL_TIMELINE } from "./timeline.js";
  * Report describes, which is the thing a change to `constants.ts` moves.
  *
  * **Every claim is a direction or a threshold, never a figure.** ADR 0005 expects these constants
- * to be rewritten, so a test asserting that the Auto-Thrower lands at twenty hours and fifty
- * minutes would fail on the first deliberate rebalance — precisely backwards, since surviving
- * that rebalance is the whole reason these exist. A guard that fails when the game is improved on
- * purpose teaches everyone to delete guards.
+ * to be rewritten, so a test asserting that the Auto-Thrower lands at thirteen minutes and twenty
+ * seconds would fail on the first deliberate rebalance — precisely backwards, since surviving that
+ * rebalance is the whole reason these exist. A guard that fails when the game is improved on
+ * purpose teaches everyone to delete guards. That the machine lands inside the first Session is a
+ * threshold and belongs here; where inside it lands is a figure and does not.
  *
  * They run against the canonical timeline throughout, because each is a claim about the pacing a
  * player actually meets rather than about some arrangement of Sessions chosen to make it true.
@@ -89,54 +90,49 @@ describe("the opening of the game", () => {
 
 describe("the Auto-Thrower", () => {
   /**
-   * **ADR 0002's promise is not asserted here, and that is the finding rather than an oversight.**
+   * **ADR 0002's promise, asserted at last.**
    *
    * The spec asked for a test that fails if the Auto-Thrower stops being reachable within the
-   * first Session. At the constants as they stand it is not reachable within the first Session:
-   * this player banks Style from the opening boundary, buys nothing at all for the whole of the
-   * first Session, and is still 125 Style short when it ends — reaching 500 six minutes and forty
-   * seconds into the second. The Report says so in as many words through `inFirstSession`.
-   * Asserting the promise would fail the suite on landing; asserting its negation would be a
-   * guard that the game stays broken, and would fail on the very change that fixes it.
+   * first Session. It stood weakened for a while — to the bare claim that a machine was reached
+   * at all — because at the constants of the time it was not reachable within the first Session,
+   * and a guard asserting the negation would have been a guard that the game stayed broken.
    *
-   * So the claim is weakened to what is true — that a machine is reached at all — and the gap
-   * itself is raised against the constants as #29 rather than papered over here. #18 puts
-   * retuning explicitly out of scope, and moving a constant to make a test pass on an
-   * instrument's first run is what its Further Notes caution against in as many words.
+   * Both halves of that gap have since been closed, and in the order that mattered. #29 asked
+   * first whether the finding was the price or the player, and it was the player: the twenty
+   * hours the harness first reported were an artefact of a policy that could not save, so it was
+   * measuring whether 500 was ever met in passing rather than whether it could be reached. ADR
+   * 0010 fixed the instrument, which moved the figure to 26m 40s of play and made it a claim
+   * about the price — and 500 was then 133% of everything a first Session can pay. The price was
+   * swept against the fixed harness and cut to 250.
    *
-   * ADR 0010 is why this figure is now the one worth arguing with. The player it was first
-   * measured on could not save at all, so the twenty hours it reported were an artefact of the
-   * instrument rather than of the price; this player saves optimally for it from the first
-   * boundary and still misses, which is a claim about the 500.
-   *
-   * When the constants are retuned, the stronger claim belongs here.
+   * A threshold and not a figure, in keeping with the rest of this file: the guard is that the
+   * machine lands inside the first Session, not that it lands at 13m 20s. What it forbids is a
+   * later rebalance quietly pushing the machine back out of reach, which is the failure ADR 0002
+   * says costs players before they ever see the game become idle.
    */
-  it("is reached at all across the player's first three days", () => {
+  it("is reached within the player's first Session", () => {
     const report = simulate(CANONICAL_TIMELINE);
 
-    expect(report.autoThrower.bought).toBe(true);
+    expect(report.autoThrower).toMatchObject({ bought: true, inFirstSession: true });
   });
 
-  it("makes a night away worth vastly more than the same night without one", () => {
-    // What the shop cannot show. Sustained Style does not move when an Auto-Thrower is bought —
-    // `hasAutoThrower` appears nowhere in it — so this comparison is the only place the purchase
-    // is legible at all, and a price change that quietly made the machine pointless would show
-    // up nowhere else.
-    //
-    // Per hour, because the two groups of Absences differ in length. The counterfactual is
-    // asserted alongside because the measured comparison alone has a confound: the Absences with
-    // a machine come later in the run, when the Gear is better anyway. `styleAMachineWouldHaveEarned`
-    // is the same nights with the same Gear and only the machine differing.
-    const substantially = 10;
+  /**
+   * The consequence of the promise, and the reason the machine's worth is no longer measurable
+   * here. Every Absence in the canonical run now has a machine working through it, so the Report
+   * has no machine-less night to compare one against — `absencesWithoutAutoThrower` is empty by
+   * design rather than by omission.
+   *
+   * That comparison still matters, and a price change that quietly made the machine pointless
+   * still has to fail something. It lives in `simulate.test.ts` now, on a run built to be away
+   * once before a machine is affordable and once after. This file keeps to the canonical timeline
+   * throughout, so the claim it can still make is this one: the player is never away without a
+   * machine at all.
+   */
+  it("is owned before the player is ever first away", () => {
     const report = simulate(CANONICAL_TIMELINE);
 
-    const working = report.absencesWithAutoThrower;
-    const alone = report.absencesWithoutAutoThrower;
-
-    expect(working.absences).toBeGreaterThan(0);
-    expect(alone.absences).toBeGreaterThan(0);
-    expect(working.stylePerHour).toBeGreaterThan(substantially * alone.stylePerHour);
-    expect(report.styleAMachineWouldHaveEarned).toBeGreaterThan(substantially * alone.style);
+    expect(report.absencesWithAutoThrower.absences).toBeGreaterThan(0);
+    expect(report.absencesWithoutAutoThrower.absences).toBe(0);
   });
 });
 

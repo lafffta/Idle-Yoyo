@@ -35,6 +35,6 @@ A Report now distinguishes two kinds of time in which the player buys nothing, a
 
 Every figure in the existing Report moves, because the purchase order moves. Reports from before this change are not comparable with reports after it, and the exact-figure tests in `simulate.test.ts` were re-derived rather than re-baselined.
 
-The finding that prompted this ADR is unresolved and stays open. This changes the instrument, not the game: no constant moved, and whether the Auto-Thrower's price is right is a question for the re-read.
+This decision changed the instrument and not the game — no constant moved with it. What it changed was what the instrument could see: the re-read that followed put the machine 26m 40s of play away against a 20-minute first Session, which is a claim about the price rather than about the player, and `autoThrowerCost` was cut from 500 to 250 on the strength of it. That the price could then be argued about at all is what this ADR bought.
 
 If this is ever simplified back to buying only what is affordable, expect the largest price in the game to be reported as reached late or not at all, and expect that to look like a pricing problem.

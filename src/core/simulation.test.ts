@@ -839,8 +839,7 @@ describe("Uptime as it saturates", () => {
 
 describe("buying the Auto-Thrower", () => {
   it("spends Style and leaves the player owning the machine", () => {
-    // 500 Style, the provisional price the spec aims at ten to fifteen minutes in.
-    const saved = withStyle(500);
+    const saved = withStyle(autoThrowerCost());
 
     const bought = buyAutoThrower(saved);
 
@@ -849,31 +848,32 @@ describe("buying the Auto-Thrower", () => {
   });
 
   it("quotes its price before the player commits to it", () => {
-    expect(autoThrowerCost()).toBeCloseTo(500, 10);
+    expect(autoThrowerCost()).toBeCloseTo(250, 10);
   });
 
   it("is refused when the player is a fraction short, leaving the state untouched", () => {
-    const nearlyEnough = withStyle(499.99);
+    const nearlyEnough = withStyle(autoThrowerCost() - 0.01);
 
     expect(buyAutoThrower(nearlyEnough)).toEqual(nearlyEnough);
   });
 
   /**
    * The Auto-Thrower is Kit, and Kit is owned rather than levelled: there is no second one to
-   * buy and no rising price to quote for it. A player who clicks twice has spent 500 Style, not
-   * 1,000.
+   * buy and no rising price to quote for it. A player who clicks twice has spent the price once,
+   * not twice.
    */
   it("is bought once and not again, however many times a rich player asks", () => {
-    let state = withStyle(5000);
+    const deepPockets = 20 * autoThrowerCost();
+    let state = withStyle(deepPockets);
 
     for (let click = 0; click < 5; click++) state = buyAutoThrower(state);
 
     expect(state.hasAutoThrower).toBe(true);
-    expect(state.style).toBeCloseTo(4500, 10);
+    expect(state.style).toBeCloseTo(deepPockets - autoThrowerCost(), 10);
   });
 
   it("survives a day of running, and nothing in the game takes it back", () => {
-    const bought = buyAutoThrower(withStyle(500));
+    const bought = buyAutoThrower(withStyle(autoThrowerCost()));
 
     const aDayLater = advance(throwYoyo(bought), 24 * 60 * 60);
 
@@ -889,20 +889,20 @@ describe("buying the Auto-Thrower", () => {
    * sitting and watching.
    */
   it("does not move Sustained Style, which is what makes it a shop problem", () => {
-    const saved = withStyle(500);
+    const saved = withStyle(autoThrowerCost());
 
     expect(sustainedStyle(buyAutoThrower(saved))).toBe(sustainedStyle(saved));
   });
 
   it("is a purchase and not a tick: buying moves no time and earns nothing", () => {
-    const midSleeper = advance({ ...freshSleeper(), style: 500 }, 2);
+    const midSleeper = advance({ ...freshSleeper(), style: autoThrowerCost() }, 2);
 
     const bought = buyAutoThrower(midSleeper);
 
     expect(bought.phase).toBe("Sleeping");
     expect(bought.spin).toBeCloseTo(midSleeper.spin, 10);
     expect(bought.phaseElapsed).toBeCloseTo(midSleeper.phaseElapsed, 10);
-    expect(bought.style).toBeCloseTo(midSleeper.style - 500, 10);
+    expect(bought.style).toBeCloseTo(midSleeper.style - autoThrowerCost(), 10);
     expect(bought.lifetimeStyle).toBeCloseTo(midSleeper.lifetimeStyle, 10);
   });
 });
@@ -957,7 +957,7 @@ describe("the Auto-Thrower keeping the loop turning", () => {
   });
 
   it("throws at the Throw Power the player owns, not the one they had when they bought it", () => {
-    const owned = buyAutoThrower(withStyle(500));
+    const owned = buyAutoThrower(withStyle(autoThrowerCost()));
     const stronger = { ...buyThrowPower({ ...owned, style: 10 }), style: 0 };
 
     // One whole cycle on: 120 Spin lasts 6s, so at 7s the string is still winding.
@@ -968,7 +968,7 @@ describe("the Auto-Thrower keeping the loop turning", () => {
   });
 
   it("starts throwing the moment it is bought, with the yoyo already back in the hand", () => {
-    const inTheHand = advance(throwYoyo(withStyle(500)), 8);
+    const inTheHand = advance(throwYoyo(withStyle(autoThrowerCost())), 8);
     expect(inTheHand.phase).toBe("Ready");
 
     const bought = advance(buyAutoThrower(inTheHand), 1);
@@ -1539,7 +1539,7 @@ describe("the shape a save has to carry", () => {
    * away from selling it back.
    */
   it("records the Auto-Thrower as Kit the player owns, not as a fourth Gear level", () => {
-    const owned = buyAutoThrower(withStyle(500));
+    const owned = buyAutoThrower(withStyle(autoThrowerCost()));
 
     expect(owned.hasAutoThrower).toBe(true);
     const levels = Object.keys(owned).filter((field) => field.endsWith("Level"));

@@ -210,6 +210,15 @@ function describeAbsences(report: Report): string[] {
 
   if (ratio > 0) {
     said.push(`The machine is worth     ${Math.round(ratio)}× the Style of an Absence without one`);
+  } else if (working.absences > 0) {
+    // The comparison is missing because the game is doing what ADR 0002 asks, and a reader owed
+    // the machine's worth should be told that rather than left looking for a line that is not
+    // there. It is the one absence in this Report worth narrating.
+    said.push(
+      "Never away without one   the machine was bought before the player was first away, so " +
+        "there is no",
+      "                         unattended night in this run to price it against",
+    );
   }
 
   return said.length > 0 ? said : ["The player was never away, so a machine could earn nothing."];
