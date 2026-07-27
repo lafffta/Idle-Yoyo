@@ -470,13 +470,12 @@ describe("the Report for the canonical timeline", () => {
   });
 
   it("closes on a yoyo far better than the one the player started with", () => {
-    // Whether every shop row stayed worth buying is the dead-row guard, and belongs to #25.
+    // Whether every shop row stayed worth buying is the dead-row guard, and lives among the
+    // pacing guards in `pacing.test.ts` — as does the claim that the same timeline reports the
+    // same run twice, which is a guard against the instrument drifting rather than a description
+    // of what it reports.
     const report = simulate(CANONICAL_TIMELINE);
 
     expect(report.finalSustainedStyle).toBeGreaterThan(SUSTAINED_STYLE_AT_OPENING);
-  });
-
-  it("is identical every time the same timeline is run", () => {
-    expect(simulate(CANONICAL_TIMELINE)).toEqual(simulate(CANONICAL_TIMELINE));
   });
 });
