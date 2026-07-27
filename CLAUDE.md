@@ -5,7 +5,7 @@ An idle game in which the player throws a yoyo and earns Style while it spins at
 ## Read these first
 
 - **`CONTEXT.md`** — the domain glossary. Use its vocabulary in code, tests, commit messages and issues, and respect the _Avoid_ lists. They exist so that one idea has exactly one name.
-- **`docs/adr/`** — eight architecture decision records. They record *why*, and several of them forbid things that would otherwise look like reasonable simplifications. Read the ones covering the area you are touching before you change it.
+- **`docs/adr/`** — ten architecture decision records. They record *why*, and several of them forbid things that would otherwise look like reasonable simplifications. Read the ones covering the area you are touching before you change it.
 
 ## Architecture
 
@@ -59,6 +59,10 @@ The simulation core runs and is under test, headless — there is no shell yet. 
 
 The core-loop spec (#3) and all six of its tickets (#4–#9) are done. The spec's own Out of Scope section is the list of what it deliberately left: the shell, save and load, Tricks and Retire.
 
-The tuning harness spec (#18) is the one it recommended next, and all four of its tickets (#22–#25) are done: `simulate(timeline) → Report` in `src/tuning`, outside the core and outside the built output, driving a scripted player who buys whatever is worth the most Style per Style spent over the play they have left. The Auto-Thrower is one row of that shop like any other, so the player may decline it. `npm run tune` prints the Report, and `src/tuning/pacing.test.ts` holds the pacing guards — coarse, directional claims that fail if a later constant change quietly rots the opening.
+The tuning harness spec (#18) is the one it recommended next, and all four of its tickets (#22–#25) are done: `simulate(timeline) → Report` in `src/tuning`, outside the core and outside the built output, driving a scripted player who buys whatever is worth the most Style per Style spent over the play they have left, and who will bank Style for a row they cannot yet afford (ADR 0010). The Auto-Thrower is one row of that shop like any other, so the player may decline it. `npm run tune` prints the Report, and `src/tuning/pacing.test.ts` holds the pacing guards — coarse, directional claims that fail if a later constant change quietly rots the opening.
 
-**The first finding is on the table and nothing has been retuned in response to it.** At the constants as they stand the player reaches their first Auto-Thrower some twenty hours into the run, in the fourth Session — not the first, which is what ADR 0002 asks for. That is raised as **#29**, which is where the retune is decided; the harness is the instrument, not the retune. The pacing guards deliberately assert only that a machine is reached at all, and `pacing.test.ts` says why in full.
+**The first retune has happened, and it is the only constant in the game that is not a guess.** #29 asked first whether the finding — a first Auto-Thrower twenty hours into the run — was the price or the simulated player. It was the player: a policy that could not save never held the largest price in the game in one hand, so it measured whether 500 was met in passing rather than whether it could be reached. ADR 0010 fixed the instrument, which moved the figure to 26m 40s of play and made it a claim about the price. 500 was then 133% of everything a first Session can pay. `autoThrowerCost` was swept against the fixed harness and cut to 250: the machine now lands 13m 20s in, some 100 Throws by hand, with a third of the first Session to spare.
+
+ADR 0002's promise is asserted rather than intended — `pacing.test.ts` guards that the machine is reached inside the first Session, as a threshold and never a figure. `FIRST_SESSION_SECONDS` is still an underived product assumption and every "within the first Session" judgement is measured against it.
+
+**One finding is open and no ticket holds it yet.** At every price swept, from 500 down to 100, the player buys *nothing at all* before the machine — it is the best buy from the opening boundary and no price changes that, only how long the hoard lasts. So the manual opening ADR 0002 wants to protect is a stretch in which the shop goes untouched, and that is structural rather than a matter of tuning.

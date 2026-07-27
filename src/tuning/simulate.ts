@@ -16,7 +16,7 @@ import {
   throwPowerCost,
   throwYoyo,
 } from "../core/simulation.js";
-import type { Timeline } from "./timeline.js";
+import type { Period, Timeline } from "./timeline.js";
 
 /**
  * The tuning harness: a scripted player driven through the real simulation core, reporting how
@@ -40,6 +40,16 @@ import type { Timeline } from "./timeline.js";
  * over the play they have left, per Style it costs, and buy the best of it while anything is
  * worth buying. The Auto-Thrower sits in that ranking as one more row: they are free to decline
  * it forever, and a refusal is a finding rather than a failure.
+ *
+ * **They will also bank Style for something they cannot yet afford**, which ADR 0010 records and
+ * defends. A row they are saving for is ranked over what would be left of the run once the saving
+ * were done, so waiting costs a purchase exactly the earnings the wait gives up, and a row that
+ * could not be reached before the run ends is worth nothing and declines itself.
+ *
+ * They follow a good rule and not the best one. Buying a level of Throw Power now also shortens
+ * the wait for everything after it, and no rule that ranks one purchase at a time can weigh that;
+ * the best possible order of purchases is a search, and this is deliberately not one. Read a time
+ * in the Report as when this player got there, not as the earliest anyone could.
  */
 
 /** The three Gear stats, at whatever levels they stand. */
@@ -87,6 +97,8 @@ export type SessionRecord = {
    * there was no decision for them to make and nothing to do but watch.
    */
   readonly secondsWithNothingAffordable: number;
+  /** Session time spent banking Style towards a row the player could not yet afford. */
+  readonly secondsSpentSaving: number;
 };
 
 /**
@@ -176,6 +188,18 @@ export type Report = {
   readonly styleAMachineWouldHaveEarned: number;
   /** Session time across the whole run in which the player could afford nothing at all. */
   readonly secondsWithNothingAffordable: number;
+  /**
+   * Session time across the whole run spent holding Style the player chose not to spend, banking
+   * towards a row they could not yet afford.
+   *
+   * Reported apart from `secondsWithNothingAffordable` because the two are opposite findings about
+   * the shop, and the figures are never both counting the same second. Nothing affordable is a
+   * stretch with no decision in it at all: the shop opens above what the game pays, which is a
+   * fault in the prices. Saving is a decision — the player passing over what they can reach for
+   * something they judge worth more — and it is the game working as designed. A single figure
+   * covering both would report a well-paced run and a badly-priced one identically.
+   */
+  readonly secondsSpentSaving: number;
 };
 
 /**
@@ -193,6 +217,86 @@ type Horizon = {
   /** How many separate Absences those seconds fall into. */
   readonly absences: number;
 };
+
+/**
+ * The run still ahead of the player, period by period, the first being the rest of the Session
+ * they are sitting in.
+ *
+ * Kept in its original shape rather than summed into a `Horizon` straight away, because a purchase
+ * the player has to save for is not collected over the whole of what is ahead — it is collected
+ * over what is left once the saving is done, and only the periods themselves say which Absences
+ * that is. Summing first would throw away exactly the detail `afterSaving` needs.
+ */
+type Ahead = readonly Period[];
+
+/** What a stretch of run adds up to, which is what a purchase is valued across. */
+function horizonOf(ahead: Ahead): Horizon {
+  let sessionSeconds = 0;
+  let absenceSeconds = 0;
+  let absences = 0;
+
+  for (const period of ahead) {
+    if (period.kind === "Session") {
+      sessionSeconds += period.seconds;
+    } else {
+      absenceSeconds += period.seconds;
+      absences += 1;
+    }
+  }
+
+  return { sessionSeconds, absenceSeconds, absences };
+}
+
+/**
+ * What is left of the run once the player has spent `seconds` of play banking Style for something.
+ *
+ * Saving costs Session time and only Session time. A player without a machine earns one last
+ * Sleeper when they close the tab and nothing at all thereafter, so an Absence spent saving brings
+ * them no closer to affording anything — it passes, and it is gone.
+ *
+ * **That an Absence passes is the point rather than a detail.** The Auto-Thrower is worth the
+ * nights it Throws through, so a machine that takes two nights' worth of saving to reach is worth
+ * two fewer nights than one bought today, and the ranking has to see that or it would recommend
+ * saving for a machine that arrives after everything it was going to earn in. It is also what
+ * stops the player stalling: save for longer than the run has left to give and there is nothing
+ * ahead to collect in, so the row is worth nothing and is declined by the same positivity rule
+ * that declines Rewind Speed at its floor.
+ */
+function afterSaving(ahead: Ahead, seconds: number): Ahead {
+  let unsaved = seconds;
+  const left: Period[] = [];
+
+  for (const period of ahead) {
+    if (unsaved <= 0) {
+      left.push(period);
+      continue;
+    }
+
+    if (period.kind === "Absence") continue;
+
+    if (period.seconds <= unsaved) {
+      unsaved -= period.seconds;
+      continue;
+    }
+
+    left.push({ kind: "Session", seconds: period.seconds - unsaved });
+    unsaved = 0;
+  }
+
+  return left;
+}
+
+/**
+ * How long the player must play before they can afford `price`, at the rate they are earning now.
+ *
+ * Sustained Style is what a Throw Cycle repeating pays, which is exactly what the player is about
+ * to do while they wait — and it holds still throughout, because saving is precisely the decision
+ * to buy nothing. Zero when they can already afford it.
+ */
+function secondsToAfford(state: GameState, price: number): number {
+  if (state.style >= price) return 0;
+  return (price - state.style) / sustainedStyle(state);
+}
 
 /**
  * Run the scripted player through `timeline` and report what happened.
@@ -217,25 +321,18 @@ export function simulate(timeline: Timeline): Report {
   let styleAMachineWouldHaveEarned = 0;
 
   let elapsed = 0;
-  // What is still to come once the current period is over — the other half of the horizon a
-  // purchase is valued across; see `playSession`.
-  let sessionSecondsToCome = secondsOf(timeline, "Session");
-  let absenceSecondsToCome = secondsOf(timeline, "Absence");
-  let absencesToCome = timeline.filter((period) => period.kind === "Absence").length;
 
   let machine: { readonly atSeconds: number; readonly session: number } | null = null;
   let manualThrowsBefore = 0;
   let secondsWithNothingAffordable = 0;
+  let secondsSpentSaving = 0;
 
-  for (const period of timeline) {
+  for (const [index, period] of timeline.entries()) {
     // Style banked, not Style held: `style` is what the purchases below spend down, and this has
     // to keep meaning "earned" now that they do.
     const earnedBefore = state.lifetimeStyle;
 
     if (period.kind === "Absence") {
-      absenceSecondsToCome -= period.seconds;
-      absencesToCome -= 1;
-
       // No purchase, no manual Throw — the game simply runs forward, exactly as it would with
       // the tab closed. ADR 0002: there is no offline branch to take. The shop is shut because
       // the player is not there, and whether anything is earned at all comes down to whether
@@ -260,12 +357,7 @@ export function simulate(timeline: Timeline): Report {
       continue;
     }
 
-    sessionSecondsToCome -= period.seconds;
-    const played = playSession(state, period.seconds, elapsed, {
-      sessionSeconds: sessionSecondsToCome,
-      absenceSeconds: absenceSecondsToCome,
-      absences: absencesToCome,
-    });
+    const played = playSession(state, period.seconds, elapsed, timeline.slice(index + 1));
     state = played.state;
 
     const session = sessions.length + 1;
@@ -289,9 +381,11 @@ export function simulate(timeline: Timeline): Report {
       manualThrows: played.manualThrows,
       purchases: played.purchases,
       secondsWithNothingAffordable: played.secondsWithNothingAffordable,
+      secondsSpentSaving: played.secondsSpentSaving,
     });
 
     secondsWithNothingAffordable += played.secondsWithNothingAffordable;
+    secondsSpentSaving += played.secondsSpentSaving;
     absenceSeconds = 0;
     styleEarnedWhileAway = 0;
     machineWhileAway = false;
@@ -323,14 +417,8 @@ export function simulate(timeline: Timeline): Report {
     absencesWithoutAutoThrower: earningsOf(withoutAutoThrower),
     styleAMachineWouldHaveEarned,
     secondsWithNothingAffordable,
+    secondsSpentSaving,
   };
-}
-
-function secondsOf(timeline: Timeline, kind: "Session" | "Absence"): number {
-  return timeline.reduce(
-    (total, period) => (period.kind === kind ? total + period.seconds : total),
-    0,
-  );
 }
 
 function earningsOf(totals: AbsenceTotals): AbsenceEarnings {
@@ -358,12 +446,13 @@ function playSession(
   state: GameState,
   seconds: number,
   startedAt: number,
-  ahead: Horizon,
+  ahead: Ahead,
 ): {
   readonly state: GameState;
   readonly manualThrows: number;
   readonly purchases: readonly Purchase[];
   readonly secondsWithNothingAffordable: number;
+  readonly secondsSpentSaving: number;
   /** Set if the player bought their first Auto-Thrower during this Session. */
   readonly boughtAutoThrower: {
     readonly atSeconds: number;
@@ -374,6 +463,7 @@ function playSession(
   let remaining = seconds;
   let manualThrows = 0;
   let secondsWithNothingAffordable = 0;
+  let secondsSpentSaving = 0;
   const purchases: Purchase[] = [];
   let boughtAutoThrower: { atSeconds: number; manualThrowsBefore: number } | null = null;
 
@@ -394,6 +484,18 @@ function playSession(
   // boundary, and reading the wallet on the way out would report their busiest run as an empty
   // one. Set here too, for a Session resumed part-way through a cycle the player cannot act in.
   let affordsNothing = !canAffordSomething(current);
+  // Whether the player left the shop holding Style they chose not to spend, banking towards
+  // something dearer. The opposite finding to `affordsNothing` and never true alongside it: one
+  // is a shop with nothing on the shelves the player can reach, the other a player reaching past
+  // what is on them. Merged into a single figure they would report a game pacing well and a game
+  // pricing its opening out of reach identically.
+  //
+  // Unlike `affordsNothing` it starts false rather than being read from the state, so a Session
+  // resumed part-way through a Throw Cycle does not count that cycle as saving. The decision it
+  // records was taken at a boundary in the Session before, and a player who has closed the game
+  // and come back is not obviously still keeping to it. At most one cycle a Session, and only
+  // where a Session ends mid-flight.
+  let saving = false;
 
   // Half-open: the player acts across `[opened, closed)` and not at the closing instant itself,
   // which belongs to whatever comes next. A Throw Cycle boundary landing exactly as a Session
@@ -406,11 +508,15 @@ function playSession(
       affordsNothing = !canAffordSomething(current);
 
       const boundaryAt = startedAt + seconds - remaining;
-      // The horizon is every second still ahead of the player: what is left of this Session,
-      // the Sessions after it, and the Absences between them. What a given purchase actually
-      // collects across is a narrower question, and `secondsGearIsCollectedOver` asks it.
-      const horizon = { ...ahead, sessionSeconds: remaining + ahead.sessionSeconds };
-      const shopped = shop(current, horizon, boundaryAt);
+      // Everything still ahead of the player: what is left of this Session, then the run as the
+      // timeline has it. What a given purchase actually collects across is a narrower question,
+      // asked by `secondsGearIsCollectedOver` and by `afterSaving` for a row worth waiting for.
+      const shopped = shop(current, [{ kind: "Session", seconds: remaining }, ...ahead], boundaryAt);
+      // Banking, rather than merely poor. A player who has just spent everything is also left
+      // wanting something they cannot afford, and counting that would make this figure mean
+      // "time not buying" — which is most of any run, and tells a designer nothing. What is
+      // being counted is a decision: a row they could have bought, passed over for a better one.
+      saving = shopped.saving && canAffordSomething(shopped.state);
 
       if (!current.hasAutoThrower && shopped.state.hasAutoThrower) {
         boughtAutoThrower = { atSeconds: boundaryAt, manualThrowsBefore: manualThrows };
@@ -441,6 +547,7 @@ function playSession(
     current = advance(current, step);
     remaining -= step;
     if (affordsNothing) secondsWithNothingAffordable += step;
+    if (saving) secondsSpentSaving += step;
     // A wound string is the top of the next cycle, whether the yoyo is now waiting in the hand
     // or already back down on a fresh Sleeper.
     atCycleTop = winding && finishes;
@@ -451,6 +558,7 @@ function playSession(
     manualThrows,
     purchases,
     secondsWithNothingAffordable,
+    secondsSpentSaving,
     boughtAutoThrower,
   };
 }
@@ -458,31 +566,40 @@ function playSession(
 /**
  * Everything the player buys at one Throw Cycle boundary.
  *
- * Buy the best candidate, then ask again, and keep asking until nothing is worth buying. The
- * re-evaluation is the whole policy rather than a refinement of it: a purchase changes what every
- * other purchase is worth, so a single pass down a ranked list would spend the same Style on a
- * worse yoyo. It is also where the Gear and the Auto-Thrower come to price each other without
- * either being special-cased — better Gear raises Sustained Style, which is exactly what an
- * Auto-Thrower would be collecting overnight, and owning one puts every night ahead into the span
- * the next piece of Gear is valued over.
+ * Buy the best candidate, then ask again, and keep asking until nothing is worth buying — or until
+ * the best of what is left is something the player would rather save for, which ends the visit
+ * just as firmly. The re-evaluation is the whole policy rather than a refinement of it: a purchase
+ * changes what every other purchase is worth, so a single pass down a ranked list would spend the
+ * same Style on a worse yoyo. It is also where the Gear and the Auto-Thrower come to price each
+ * other without either being special-cased — better Gear raises Sustained Style, which is exactly
+ * what an Auto-Thrower would be collecting overnight, and owning one puts every night ahead into
+ * the span the next piece of Gear is valued over.
  *
  * Terminates because every purchase costs Style at a strictly positive price, so the player's
- * balance falls at each turn of the loop while nothing here adds to it.
+ * balance falls at each turn of the loop while nothing here adds to it — and a loop that stops
+ * buying stops outright, since the row it is saving for only gets dearer to reach as the Style in
+ * hand stays put.
  */
 function shop(
   state: GameState,
-  horizon: Horizon,
+  ahead: Ahead,
   atSeconds: number,
-): { readonly state: GameState; readonly purchases: readonly Purchase[] } {
+): {
+  readonly state: GameState;
+  readonly purchases: readonly Purchase[];
+  /** Whether the player left the shop still wanting a row they will have to bank Style for. */
+  readonly saving: boolean;
+} {
   let current = state;
   const purchases: Purchase[] = [];
 
   for (;;) {
-    const best = bestPurchase(current, horizon);
-    if (best === null) return { state: current, purchases };
+    const best = bestPurchase(current, ahead);
+    if (best === null) return { state: current, purchases, saving: false };
+    if (best.saveFor > 0) return { state: current, purchases, saving: true };
 
-    current = best.state;
-    purchases.push({ item: best.item, price: best.price, atSeconds });
+    current = best.row.buy(current);
+    purchases.push({ item: best.row.item, price: best.price, atSeconds });
   }
 }
 
@@ -495,38 +612,46 @@ function shop(
  * one Style per Style spent, which is how a mispriced Auto-Thrower loses to Gear without anything
  * being written about the Auto-Thrower in particular.
  *
+ * **A row the player cannot yet afford is ranked all the same, valued over what would be left of
+ * the run once they had saved for it.** A wait costs a purchase the Style it would have earned
+ * during that wait, so the discount is the honest price of banking rather than a penalty invented
+ * to discourage it, and a row that cannot be reached before the run ends is valued over nothing at
+ * all and declines itself. ADR 0010 has the whole of why the player is allowed to wait; the short
+ * version is that a player who must spend everything at every boundary can never hold a large
+ * price, and reports the largest price in the game unreachable however cheap it is made.
+ *
  * Buying only on positive worth is what stops the player pouring Style into a row that has
- * stopped paying. It bites in two places: at the Rewind floor, where a further level of Rewind
- * Speed shortens the Rewind not at all, and on an Auto-Thrower with no Absence left ahead of it
- * to earn in. Both are declined by the rule that buys everything else rather than by a rule
- * written about them.
+ * stopped paying. It bites in three places: at the Rewind floor, where a further level of Rewind
+ * Speed shortens the Rewind not at all, on an Auto-Thrower with no Absence left ahead of it to
+ * earn in, and on anything priced beyond what the rest of the run could bank for it. All three
+ * are declined by the rule that buys everything else rather than by a rule written about them.
  *
  * Ties go to the earlier row, which never happens at the current constants and keeps the Report
  * deterministic if it ever does.
  */
 function bestPurchase(
   state: GameState,
-  horizon: Horizon,
+  ahead: Ahead,
 ): {
-  readonly item: Purchasable;
+  readonly row: ShopRow;
   readonly price: number;
-  /** The state the player would be in having bought it — the core's own transition applied. */
-  readonly state: GameState;
+  /** Seconds of play the player must bank before they can afford it. Zero if they already can. */
+  readonly saveFor: number;
   readonly value: number;
 } | null {
-  let best: { item: Purchasable; price: number; state: GameState; value: number } | null = null;
+  let best: { row: ShopRow; price: number; saveFor: number; value: number } | null = null;
 
   for (const row of SHOP) {
     if (!row.onSale(state)) continue;
 
     const price = row.price(state);
-    if (state.style < price) continue;
+    const saveFor = secondsToAfford(state, price);
 
-    const value = row.worth(state, horizon) / price;
+    const value = row.worth(state, horizonOf(afterSaving(ahead, saveFor))) / price;
     if (value <= 0) continue;
 
     if (best === null || value > best.value) {
-      best = { item: row.item, price, state: row.buy(state), value };
+      best = { row, price, saveFor, value };
     }
   }
 
@@ -566,6 +691,13 @@ type GearRow = ShopRow & { readonly item: GearStat; readonly level: (state: Game
  * headline figure back. That is what keeps the Report describing the game that ships: a
  * rebalance, or a change to what a level does, reaches the simulated player without anyone
  * remembering to update them.
+ *
+ * **The wallet is invented, and inventing it is the question** — the same trick `rewindIsAtFloor`
+ * plays, for the same reason. The core refuses a purchase the player cannot afford and returns the
+ * state untouched, so asking what a row would be worth out of an empty pocket answers that it
+ * would be worth nothing whatever it does. That is the wrong answer to "what is this worth?" and
+ * the right one to "may I have it?", and now that the player ranks rows they are saving up for,
+ * only the first question is being asked here.
  */
 function gearRow(
   item: GearStat,
@@ -579,9 +711,13 @@ function gearRow(
     price,
     buy,
     onSale: () => true,
-    worth: (state, horizon) =>
-      (sustainedStyle(buy(state)) - sustainedStyle(state)) *
-      secondsGearIsCollectedOver(state, horizon),
+    worth: (state, horizon) => {
+      const affordable = { ...state, style: price(state) };
+      return (
+        (sustainedStyle(buy(affordable)) - sustainedStyle(affordable)) *
+        secondsGearIsCollectedOver(state, horizon)
+      );
+    },
   };
 }
 
