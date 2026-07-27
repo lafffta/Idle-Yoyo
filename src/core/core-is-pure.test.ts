@@ -38,13 +38,19 @@ const outsideWorld = [
  * The source with its comments removed, leaving only what executes.
  *
  * It walks the text rather than running a pair of regexes over it, because a regex cannot tell
- * a comment from a slash inside a string. Blanking too much is the dangerous direction: eating
- * the rest of a line that merely contained a URL would hide whatever followed, and the guard
- * would weaken silently instead of getting noisy. Newlines inside block comments are kept so
- * the result still lines up with the original.
+ * a comment from a slash inside a string. Every mistake this can make removes text, and removing
+ * text is what weakens the guard, so each one is a hazard that goes unseen rather than a noisy
+ * failure. Newlines inside block comments are kept so the result still lines up.
  *
- * Known limit: a regex literal containing `//` or `/*` would be read as a comment. The core has
- * no regex literals, and erring here costs a confusing failure rather than a missed one.
+ * A quoted string therefore ends at a newline as well as at its closing quote — an unterminated
+ * quote would otherwise swallow every line after it. Template literals may span lines, so they
+ * end only at their backtick.
+ *
+ * **Known hole, and it fails in the unsafe direction:** a regex literal containing `//` or `/*`
+ * reads as a comment, so anything after it on that line is dropped and a clock hiding there
+ * would pass. Telling a regex literal from a division needs to know what came before it, which
+ * is more than this is worth. The core contains no regex literals; if one is ever added here,
+ * this needs revisiting rather than trusting.
  */
 function codeIn(source: string): string {
   let code = "";
@@ -76,6 +82,11 @@ function codeIn(source: string): string {
 
       while (index < source.length) {
         const inString = source.charAt(index);
+
+        // Only a template literal may cross a line. Stopping here means an unterminated quote
+        // costs one confused line rather than every line after it.
+        if (inString === "\n" && character !== "`") break;
+
         code += inString;
         index++;
 
@@ -124,10 +135,19 @@ describe("reading a source file for what it executes", () => {
   });
 
   it("does not mistake a slash inside a string for the start of a comment", () => {
-    // Over-blanking is the dangerous direction. A stripper that ate the rest of this line
-    // would hide the clock behind it, and the guard would weaken silently rather than
-    // getting noisy — the one failure mode a guard must not have.
     const source = 'const adr = "https://example.com/adr"; const now = Date.now();';
+
+    expect(codeIn(source)).toMatch(/\bDate\s*\./);
+  });
+
+  it("lets an unterminated quote cost one line rather than every line after it", () => {
+    const source = ['const broken = "oops;', "const now = Date.now();"].join("\n");
+
+    expect(codeIn(source)).toMatch(/\bDate\s*\./);
+  });
+
+  it("reads a template literal that spans lines without losing the code after it", () => {
+    const source = ["const banner = `first", "second`;", "const now = Date.now();"].join("\n");
 
     expect(codeIn(source)).toMatch(/\bDate\s*\./);
   });
