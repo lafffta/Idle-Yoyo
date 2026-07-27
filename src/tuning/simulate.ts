@@ -825,7 +825,8 @@ function rewindIsAtFloor(state: GameState): boolean {
  * reading back how long the yoyo then sat Ready, depends on `advance`'s Ready branch absorbing
  * the rest of a delta into `phaseElapsed` — a deeper coupling to the core's internals than two
  * formulas, and one that stops working entirely once an Auto-Thrower is owned and the yoyo
- * never rests Ready at all.
+ * never rests Ready at all. #21 has since closed that route off outright: `Ready` holds
+ * `phaseElapsed` at zero, so there is no longer any record of how long the yoyo waited.
  *
  * What it does not do is copy the constants: the decay rate and the Rewind duration are asked
  * for, not recomputed, so a rebalance still reaches the harness. And the duplication is
