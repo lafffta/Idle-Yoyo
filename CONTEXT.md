@@ -81,6 +81,7 @@ _Avoid_: Inventory, tools, permanent upgrades
 **Auto-Thrower**:
 A machine that performs a Throw on the player's behalf when the yoyo dies. Owning one is what makes the game idle rather than active. Kit, not Gear — automation is a one-way door.
 _Avoid_: Auto-clicker, automation, bot
+_"Machine"_: prose only, as the common noun this definition itself uses. Identifiers, types, test names and every string a person reads — the `npm run tune` Report, and anything a player is shown — say Auto-Thrower. The word may describe one; it may not label one.
 
 ## Tricks
 

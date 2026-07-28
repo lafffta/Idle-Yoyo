@@ -63,7 +63,7 @@ const AWAY_BEFORE_AND_AFTER: Timeline = [
  * half-shaped for the assertions after it to paper over — a run where nothing was automated is a
  * different claim, and the tests above make it directly.
  */
-function machineIn(report: Report) {
+function autoThrowerIn(report: Report) {
   const { autoThrower } = report;
   if (!autoThrower.bought) throw new Error("the player never bought an Auto-Thrower");
   return autoThrower;
@@ -294,7 +294,7 @@ describe("a player saving up", () => {
     // most is a level or two out of reach, and those stretches are in the figure too.
     const report = simulate([session(3_600), absence(86_400), session(60)]);
 
-    expect(report.secondsSpentSaving).toBeGreaterThanOrEqual(machineIn(report).atSeconds - 32);
+    expect(report.secondsSpentSaving).toBeGreaterThanOrEqual(autoThrowerIn(report).atSeconds - 32);
   });
 
   it("counts a shop it cannot reach as dead time and not as saving", () => {
@@ -332,24 +332,24 @@ describe("the Auto-Thrower", () => {
     const report = simulate(CANONICAL_TIMELINE);
 
     expect(report.autoThrower.bought).toBe(true);
-    expect(machineIn(report).atSeconds).toBeGreaterThan(0);
+    expect(autoThrowerIn(report).atSeconds).toBeGreaterThan(0);
   });
 
   it("is bought once and never again", () => {
     const report = simulate(CANONICAL_TIMELINE);
 
-    const machines = report.sessions
+    const autoThrowerPurchases = report.sessions
       .flatMap((record) => record.purchases)
       .filter((purchase) => purchase.item === "Auto-Thrower");
 
-    expect(machines).toHaveLength(1);
+    expect(autoThrowerPurchases).toHaveLength(1);
   });
 
   it("takes over the Throwing, so the player never Throws by hand again", () => {
     const report = simulate(CANONICAL_TIMELINE);
 
     const afterwards = report.sessions.filter(
-      (record) => record.session > machineIn(report).session,
+      (record) => record.session > autoThrowerIn(report).session,
     );
 
     expect(afterwards.length).toBeGreaterThan(0);
@@ -362,12 +362,12 @@ describe("the Auto-Thrower", () => {
     // a cycle's worth, because the night ends part-way through whatever Sleeper is in flight.
     const report = simulate(CANONICAL_TIMELINE);
 
-    const nightsWithAMachine = report.sessions.filter(
+    const nightsWithAnAutoThrower = report.sessions.filter(
       (record, index) => index > 0 && record.autoThrowerDuringPrecedingAbsence,
     );
 
-    expect(nightsWithAMachine.length).toBeGreaterThan(0);
-    for (const record of nightsWithAMachine) {
+    expect(nightsWithAnAutoThrower.length).toBeGreaterThan(0);
+    for (const record of nightsWithAnAutoThrower) {
       // Nothing is bought while the player is away, so the rate through the whole Absence is
       // the one they left the game at.
       const rate = report.sessions[record.session - 2]?.sustainedStyleAtClose ?? 0;
@@ -393,28 +393,28 @@ describe("the Report's headline facts", () => {
   it("places the first Auto-Thrower in the Session it was bought in", () => {
     const report = simulate(CANONICAL_TIMELINE);
 
-    const machine = machineIn(report);
-    const window = sessionWindows(CANONICAL_TIMELINE)[machine.session - 1];
+    const autoThrower = autoThrowerIn(report);
+    const window = sessionWindows(CANONICAL_TIMELINE)[autoThrower.session - 1];
 
     expect(window).toBeDefined();
-    expect(machine.atSeconds).toBeGreaterThanOrEqual(window?.opened ?? 0);
-    expect(machine.atSeconds).toBeLessThan(window?.closed ?? 0);
-    expect(machine.inFirstSession).toBe(machine.session === 1);
+    expect(autoThrower.atSeconds).toBeGreaterThanOrEqual(window?.opened ?? 0);
+    expect(autoThrower.atSeconds).toBeLessThan(window?.closed ?? 0);
+    expect(autoThrower.inFirstSession).toBe(autoThrower.session === 1);
   });
 
-  it("counts the Throws the player made by hand before the machine took over", () => {
+  it("counts the Throws the player made by hand before the Auto-Thrower took over", () => {
     const report = simulate(CANONICAL_TIMELINE);
 
-    const machine = machineIn(report);
+    const autoThrower = autoThrowerIn(report);
     const byHand = report.sessions
-      .filter((record) => record.session <= machine.session)
+      .filter((record) => record.session <= autoThrower.session)
       .reduce((total, record) => total + record.manualThrows, 0);
 
-    expect(machine.manualThrowsBefore).toBe(byHand);
-    expect(machine.manualThrowsBefore).toBeGreaterThan(0);
+    expect(autoThrower.manualThrowsBefore).toBe(byHand);
+    expect(autoThrower.manualThrowsBefore).toBeGreaterThan(0);
   });
 
-  it("states what an Absence earns with a machine working and what one earns without", () => {
+  it("states what an Absence earns with an Auto-Thrower working and what one earns without", () => {
     // The figure that quantifies what the shop cannot show. Sustained Style does not move when
     // an Auto-Thrower is bought, so this comparison is the only place its value is legible.
     const report = simulate(AWAY_BEFORE_AND_AFTER);
@@ -434,7 +434,7 @@ describe("the Report's headline facts", () => {
 
     expect(report.autoThrower.bought).toBe(false);
     expect(report.absencesWithAutoThrower.absences).toBe(0);
-    expect(report.styleAMachineWouldHaveEarned).toBeGreaterThan(
+    expect(report.styleAnAutoThrowerWouldHaveEarned).toBeGreaterThan(
       report.absencesWithoutAutoThrower.style,
     );
   });
@@ -512,7 +512,7 @@ describe("the Report for the canonical timeline", () => {
     expect(last).toBeLessThan(first);
   });
 
-  it("earns less across a whole night than in the play that follows, until a machine is working", () => {
+  it("earns less across a whole night than in the play that follows, while unattended", () => {
     // Nothing re-Throws the yoyo while the player is away, so an unattended Absence earns only
     // whatever Sleeper was left on the string — worth more and more as the Bearing keeps the
     // yoyo alive longer, but never a night's worth of anything. This is the gap the
@@ -529,7 +529,7 @@ describe("the Report for the canonical timeline", () => {
     }
   });
 
-  it("earns more across a night than in a whole day of play once a machine is working", () => {
+  it("earns more across a night than a whole day of play, once an Auto-Thrower works", () => {
     const report = simulate(CANONICAL_TIMELINE);
 
     const attended = report.sessions.filter((record) => record.autoThrowerDuringPrecedingAbsence);

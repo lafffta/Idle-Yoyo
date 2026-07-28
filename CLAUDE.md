@@ -37,6 +37,8 @@ Every numeric constant in the game is currently a **placeholder**, not an author
 - Tickets live in GitHub Issues. `ready-for-agent` means grabbable; each ticket names what blocks it. Work the frontier — any ticket whose blockers are all closed.
 - Branch off `main`.
 - Tests go through the seam, not around it. Assert on behaviour a player could describe, never on internals. A test should survive the implementation being rewritten.
+- **A caveat that names its own expiry belongs to a ticket.** Docblocks here are unusually honest about what was checked and when it stops being true — *"changes no figure at the constants as they stand"*, *"absolute for now because there is only one Yoyo"*. Keep writing them; that context is worth far more beside the code than in an issue. But a comment does not fail. When the trigger fires, nothing announces it, and the code goes quietly wrong in a way that still reads as considered. So if a comment names a condition under which it goes stale, cite the ticket that will catch it. #37 exists because one did not: it said it would bite as soon as the prices moved, the prices moved in #29, and only a code review noticed.
+- Before filing an issue, search the tracker. Several sessions work this repo in parallel and will reach the same finding independently — six of eight open issues were once duplicates of two.
 - Project skills live in `.claude/skills/` and load automatically — `/tdd`, `/codebase-design`, `/diagnosing-bugs` and others.
 
 ## Agent skills

@@ -185,7 +185,7 @@ export type Report = {
    * without this the most valuable result the instrument can produce would print as a blank —
    * a designer judging the price would be told nothing at all.
    */
-  readonly styleAMachineWouldHaveEarned: number;
+  readonly styleAnAutoThrowerWouldHaveEarned: number;
   /** Session time across the whole run in which the player could afford nothing at all. */
   readonly secondsWithNothingAffordable: number;
   /**
@@ -314,15 +314,15 @@ export function simulate(timeline: Timeline): Report {
   // Accumulated, so that two Absences in a row read as the one gap they are.
   let absenceSeconds = 0;
   let styleEarnedWhileAway = 0;
-  let machineWhileAway = false;
+  let autoThrowerWhileAway = false;
 
   const withAutoThrower: AbsenceTotals = { absences: 0, seconds: 0, style: 0 };
   const withoutAutoThrower: AbsenceTotals = { absences: 0, seconds: 0, style: 0 };
-  let styleAMachineWouldHaveEarned = 0;
+  let styleAnAutoThrowerWouldHaveEarned = 0;
 
   let elapsed = 0;
 
-  let machine: { readonly atSeconds: number; readonly session: number } | null = null;
+  let firstAutoThrower: { readonly atSeconds: number; readonly session: number } | null = null;
   let manualThrowsBefore = 0;
   let secondsWithNothingAffordable = 0;
   let secondsSpentSaving = 0;
@@ -340,7 +340,7 @@ export function simulate(timeline: Timeline): Report {
       const throwing = state.hasAutoThrower;
       // Asked before the game runs forward, because nothing is bought while the player is away:
       // the rate they left at is the rate a machine would have held all night.
-      if (!throwing) styleAMachineWouldHaveEarned += sustainedStyle(state) * period.seconds;
+      if (!throwing) styleAnAutoThrowerWouldHaveEarned += sustainedStyle(state) * period.seconds;
 
       state = advance(state, period.seconds);
       const earned = state.lifetimeStyle - earnedBefore;
@@ -352,7 +352,7 @@ export function simulate(timeline: Timeline): Report {
 
       absenceSeconds += period.seconds;
       styleEarnedWhileAway += earned;
-      machineWhileAway = throwing;
+      autoThrowerWhileAway = throwing;
       elapsed += period.seconds;
       continue;
     }
@@ -363,9 +363,9 @@ export function simulate(timeline: Timeline): Report {
     const session = sessions.length + 1;
     // Until the machine takes over, every Throw in the Session was made by hand; in the Session
     // it takes over in, only the ones before the moment it did.
-    if (machine === null) {
+    if (firstAutoThrower === null) {
       const bought = played.boughtAutoThrower;
-      machine = bought === null ? null : { atSeconds: bought.atSeconds, session };
+      firstAutoThrower = bought === null ? null : { atSeconds: bought.atSeconds, session };
       manualThrowsBefore += bought?.manualThrowsBefore ?? played.manualThrows;
     }
 
@@ -375,7 +375,7 @@ export function simulate(timeline: Timeline): Report {
       styleEarned: state.lifetimeStyle - earnedBefore,
       precedingAbsenceSeconds: absenceSeconds,
       styleEarnedDuringPrecedingAbsence: styleEarnedWhileAway,
-      autoThrowerDuringPrecedingAbsence: machineWhileAway,
+      autoThrowerDuringPrecedingAbsence: autoThrowerWhileAway,
       sustainedStyleAtClose: sustainedStyle(state),
       gearAtClose: gearOf(state),
       manualThrows: played.manualThrows,
@@ -388,7 +388,7 @@ export function simulate(timeline: Timeline): Report {
     secondsSpentSaving += played.secondsSpentSaving;
     absenceSeconds = 0;
     styleEarnedWhileAway = 0;
-    machineWhileAway = false;
+    autoThrowerWhileAway = false;
     elapsed += period.seconds;
   }
 
@@ -403,19 +403,19 @@ export function simulate(timeline: Timeline): Report {
     // is at the floor here.
     rewindReachedFloor: rewindIsAtFloor(state),
     autoThrower:
-      machine === null
+      firstAutoThrower === null
         ? { bought: false, manualThrows: manualThrowsBefore, price: autoThrowerCost() }
         : {
             bought: true,
-            atSeconds: machine.atSeconds,
-            session: machine.session,
-            inFirstSession: machine.session === 1,
+            atSeconds: firstAutoThrower.atSeconds,
+            session: firstAutoThrower.session,
+            inFirstSession: firstAutoThrower.session === 1,
             manualThrowsBefore,
             price: autoThrowerCost(),
           },
     absencesWithAutoThrower: earningsOf(withAutoThrower),
     absencesWithoutAutoThrower: earningsOf(withoutAutoThrower),
-    styleAMachineWouldHaveEarned,
+    styleAnAutoThrowerWouldHaveEarned,
     secondsWithNothingAffordable,
     secondsSpentSaving,
   };
