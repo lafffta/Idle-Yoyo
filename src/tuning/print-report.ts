@@ -69,8 +69,8 @@ const SESSION_COLUMNS: readonly Column<SessionRecord>[] = [
         : "—",
   },
   {
-    heading: "Machine",
-    width: 9,
+    heading: "Auto-Thrower",
+    width: 14,
     of: (record) => {
       if (record.precedingAbsenceSeconds === 0) return "—";
       return record.autoThrowerDuringPrecedingAbsence ? "throwing" : "none";
@@ -143,15 +143,15 @@ function describeUnboughtGear(report: Report): string {
  * could only describe a purchase could never tell anyone the price was wrong.
  */
 function describeAutoThrower(report: Report): string[] {
-  const machine = report.autoThrower;
-  const price = `Price                    ${formatStyle(machine.price)} Style`;
+  const autoThrower = report.autoThrower;
+  const price = `Price                    ${formatStyle(autoThrower.price)} Style`;
 
-  if (!machine.bought) {
+  if (!autoThrower.bought) {
     return [
       "Bought                   no — the player declined it every time they could have bought it",
       "                         The Absences ahead were never worth its price, which is a finding",
       "                         about the price rather than a failure to find one.",
-      `Throws made by hand      ${machine.manualThrows}, all of them`,
+      `Throws made by hand      ${autoThrower.manualThrows}, all of them`,
       price,
     ];
   }
@@ -159,11 +159,11 @@ function describeAutoThrower(report: Report): string[] {
   const sessions = report.sessions.length;
 
   return [
-    `Bought                   yes, ${formatDuration(machine.atSeconds)} in, ` +
-      `during Session ${machine.session} of ${sessions}`,
-    `Within the first Session ${machine.inFirstSession ? "yes" : "no"} — ADR 0002 asks that it ` +
-      `be, and the first Session ends at ${formatDuration(FIRST_SESSION_SECONDS)}`,
-    `Throws made by hand      ${machine.manualThrowsBefore} before the machine took over`,
+    `Bought                   yes, ${formatDuration(autoThrower.atSeconds)} in, ` +
+      `during Session ${autoThrower.session} of ${sessions}`,
+    `Within the first Session ${autoThrower.inFirstSession ? "yes" : "no"} — ADR 0002 asks ` +
+      `that it be, and the first Session ends at ${formatDuration(FIRST_SESSION_SECONDS)}`,
+    `Throws made by hand      ${autoThrower.manualThrowsBefore} before it took over`,
     price,
   ];
 }
@@ -187,41 +187,42 @@ function describeAbsences(report: Report): string[] {
   const working = report.absencesWithAutoThrower;
   const alone = report.absencesWithoutAutoThrower;
   const counterfactual =
-    alone.seconds > 0 ? (report.styleAMachineWouldHaveEarned * 3600) / alone.seconds : 0;
-  const ratio = alone.style > 0 ? report.styleAMachineWouldHaveEarned / alone.style : 0;
+    alone.seconds > 0 ? (report.styleAnAutoThrowerWouldHaveEarned * 3600) / alone.seconds : 0;
+  const ratio = alone.style > 0 ? report.styleAnAutoThrowerWouldHaveEarned / alone.style : 0;
 
   const said: string[] = [];
 
   if (alone.absences > 0) {
     said.push(
-      `Left with no machine     ${formatStyle(alone.style)} Style across ${alone.absences} ` +
+      `Unattended Absences      ${formatStyle(alone.style)} Style across ${alone.absences} ` +
         `Absences (${formatStyle(alone.stylePerHour)} per hour away)`,
-      `Those same Absences      ${formatStyle(report.styleAMachineWouldHaveEarned)} Style had a ` +
-        `machine been throwing (${formatStyle(counterfactual)} per hour)`,
+      `Those same Absences      ${formatStyle(report.styleAnAutoThrowerWouldHaveEarned)} Style ` +
+        `had an Auto-Thrower been throwing (${formatStyle(counterfactual)} per hour)`,
     );
   }
 
   if (working.absences > 0) {
     said.push(
-      `With a machine throwing  ${formatStyle(working.style)} Style across ` +
+      `With an Auto-Thrower     ${formatStyle(working.style)} Style across ` +
         `${working.absences} Absences (${formatStyle(working.stylePerHour)} per hour away)`,
     );
   }
 
   if (ratio > 0) {
-    said.push(`The machine is worth     ${Math.round(ratio)}× the Style of an Absence without one`);
+    said.push(`An Auto-Thrower is worth ${Math.round(ratio)}× the Style of an Absence without one`);
   } else if (working.absences > 0) {
     // The comparison is missing because the game is doing what ADR 0002 asks, and a reader owed
     // the machine's worth should be told that rather than left looking for a line that is not
     // there. It is the one absence in this Report worth narrating.
     said.push(
-      "Never away without one   the machine was bought before the player was first away, so " +
-        "there is no",
-      "                         unattended night in this run to price it against",
+      "Never away without one   the Auto-Thrower was bought before the player was first away,",
+      "                         so there is no unattended night in this run to price it against",
     );
   }
 
-  return said.length > 0 ? said : ["The player was never away, so a machine could earn nothing."];
+  return said.length > 0
+    ? said
+    : ["The player was never away, so an Auto-Thrower could earn nothing."];
 }
 
 function print(timeline: Timeline, report: Report): void {

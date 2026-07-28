@@ -848,7 +848,7 @@ describe("Uptime as it saturates", () => {
 });
 
 describe("buying the Auto-Thrower", () => {
-  it("spends Style and leaves the player owning the machine", () => {
+  it("spends Style and leaves the player owning the Auto-Thrower", () => {
     const saved = withStyle(autoThrowerCost());
 
     const bought = buyAutoThrower(saved);
