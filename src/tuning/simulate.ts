@@ -757,17 +757,57 @@ const SHOP: readonly ShopRow[] = [...GEAR, AUTO_THROWER];
  * re-Throws the yoyo while the player is away, so crediting Gear with rate it will never collect
  * would make the Report plausible and wrong.
  *
- * **It changes no decision at the constants as they stand, and no test guards it, which is worth
- * saying rather than leaving to be rediscovered.** Every Gear row is valued over the same span,
- * so widening it multiplies them all alike and cannot reorder them; the only ranking it could
- * move is Gear against the Auto-Thrower, and whenever the Auto-Thrower is affordable at all it
- * wins by a factor of tens. Deleting the condition here leaves every figure in every Report
- * unchanged — that was checked, not assumed.
+ * **It is load-bearing, and the whole opening of the run rests on it.** Checked against an
+ * `autoThrowerCost` of 250 and the saving player of ADR 0010. Deleting the condition moves the
+ * machine to 7m 48s rather than 13m 20s, after 37 Throws by hand rather than 100, and opens the run
+ * with seven levels of Throw Power instead of nothing at all; the purchase order, the final Gear
+ * and Sustained Style all move with it. Four tests fail with it gone, `pacing.test.ts`'s Sustained
+ * Style guard among them. What survives unchanged is only what is coarse enough not to notice —
+ * the machine still lands inside the first Session, every Gear row is still bought, the Rewind
+ * still reaches its floor.
  *
- * It stays because it is the honest model rather than because it currently bites, and it will
- * bite as soon as the prices move or a second piece of Kit exists. A test for it would have to
- * reach past the seam into a value nothing reports, which is the kind of test CLAUDE.md asks us
- * not to write.
+ * **What made it bite was the player, not the price** — worth stating plainly, because the obvious
+ * suspect is the wrong one and #34 was raised expecting the other answer. Two things changed
+ * between the check that found it inert and this one: ADR 0010 taught the player to bank Style, and
+ * #29 halved the machine. Re-running the comparison at the old price of 500 against the saving
+ * player separates them, and the price is not the culprit: at 500 the condition already decides
+ * everything, moving the machine from 26m 40s of play to 11m 31s and from the second Session into
+ * the first. That is the same question #29 asked about its own finding, with the same answer.
+ *
+ * It also means this condition is what #29 acted on. Without it the harness would have reported a
+ * 500-Style machine landing comfortably inside the first Session, ADR 0002's promise would have
+ * looked kept, and no retune would have been called for.
+ *
+ * The argument that once said it could not matter is kept here, because knowing where it broke is
+ * what says when to check again. It ran: every Gear row is valued over the same span, so widening
+ * it multiplies them all alike and cannot reorder them, and the one ranking it could move — Gear
+ * against the Auto-Thrower — is settled by the machine winning by a factor of tens whenever it is
+ * affordable at all. *Whenever it is affordable* is the clause that failed, and a player who could
+ * not save was what kept it true: such a player only ever meets the machine at a boundary where
+ * they can already pay for it. Let them bank, and the ranking that decides the opening becomes Gear
+ * against a machine being saved for — where widening the span multiplies Gear while leaving the
+ * machine's own worth, already Absence-only, exactly where it was. Ten Style of Throw Power then
+ * outscores it per Style spent and the hoard never starts.
+ *
+ * Which makes this the reason the shop goes untouched before the machine, and not a fact about the
+ * price: the machine is the best buy from the opening boundary under the honest model, and under
+ * the dishonest one it is not.
+ *
+ * It stays because it is the honest model, which is the only reason it ever needed.
+ *
+ * **It is still not guarded, and the obvious guard would be worse than none.** Those four failures
+ * are incidental — none of the four was written with this in mind, so any of them could be
+ * rewritten for unrelated reasons and take the notice with it. The tempting fix is a
+ * `pacing.test.ts` claim that the shop goes untouched before the machine: it is player-describable,
+ * it stays the right side of the seam, and it would fail the moment this condition went. It is
+ * refused because that shape of opening is an open finding rather than a decision — a stretch with
+ * the shop untouched is a thing we may well want to fix — and a guard asserting it would fail on
+ * the deliberate improvement, which is exactly the guard `pacing.test.ts` warns turns everyone into
+ * a deleter of guards. Asserting a finding freezes it.
+ *
+ * So the honest position is that the safety net is still a sentence, now a sentence that has been
+ * wrong once. What would make it cheap to notice is a second Report to diff against, which is a
+ * bigger thing than this function and belongs to whoever wants it.
  */
 function secondsGearIsCollectedOver(state: GameState, horizon: Horizon): number {
   return horizon.sessionSeconds + (state.hasAutoThrower ? horizon.absenceSeconds : 0);
