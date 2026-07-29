@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { formatNumber } from "./format.js";
 import type {
+  AbsenceSummary as AbsenceSummaryState,
   AutoThrowerOffer,
   GameStore,
   GearOffer,
@@ -24,6 +25,58 @@ function UnreadableSaveWarning() {
       <span>
         A fresh game was started, and the original save was kept safely on this device.
       </span>
+    </aside>
+  );
+}
+
+function formatAbsenceDuration(seconds: number): string {
+  const minutes = Math.round(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (hours === 0) return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  if (remainingMinutes === 0) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  return `${hours} ${hours === 1 ? "hour" : "hours"} and ${remainingMinutes} ${
+    remainingMinutes === 1 ? "minute" : "minutes"
+  }`;
+}
+
+function absenceExplanation(summary: AbsenceSummaryState): string {
+  const earned = `${formatNumber(summary.styleEarned)} Style`;
+
+  switch (summary.outcome) {
+    case "autoThrower":
+      return `Your Auto-Thrower kept every Throw Cycle moving and earned ${earned} while you were away.`;
+    case "died":
+      return `Your yoyo died when its Spin ran out. It earned ${earned} while you were away, then nothing further without an Auto-Thrower.`;
+    case "alreadyDead":
+      return `Your yoyo had already died when its Spin ran out. It earned ${earned} while you were away, then nothing further without an Auto-Thrower.`;
+    case "stillSleeping":
+      return `Your yoyo stayed a Sleeper and earned ${earned} while you were away. Without an Auto-Thrower, it will earn nothing further after its Spin runs out.`;
+  }
+}
+
+function AbsenceSummary({ store }: AppProps) {
+  const summary = useSyncExternalStore(
+    store.subscribeToAbsenceSummary,
+    store.getAbsenceSummary,
+    store.getAbsenceSummary,
+  );
+
+  if (summary === null) return null;
+
+  return (
+    <aside className="absence-summary" aria-labelledby="absence-summary-heading">
+      <div>
+        <p className="eyebrow">Welcome back</p>
+        <h2 id="absence-summary-heading">
+          You were away for {formatAbsenceDuration(summary.seconds)}.
+        </h2>
+        <p>{absenceExplanation(summary)}</p>
+      </div>
+      <button className="action-button" type="button" onClick={store.dismissAbsenceSummary}>
+        Dismiss
+      </button>
     </aside>
   );
 }
@@ -202,6 +255,8 @@ export function App({ store, saveWasUnreadable = false }: AppProps) {
       </header>
 
       {saveWasUnreadable ? <UnreadableSaveWarning /> : null}
+
+      <AbsenceSummary store={store} />
 
       <section className="game-stage" aria-label="Throw Cycle">
         <div className="canvas-card">

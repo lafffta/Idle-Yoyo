@@ -1,9 +1,17 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import {
+  initialState,
+  throwYoyo,
+} from "../core/simulation.js";
 import { App } from "./app.js";
 import { createGameStore } from "./store.js";
-import { completeThrowCycles } from "./test-helpers.js";
+import {
+  completeThrowCycles,
+  restoreAfterAbsence,
+  sleeperWithAutoThrower,
+} from "./test-helpers.js";
 
 describe("the Throw control", () => {
   it("explains when Throw is unavailable and enables it when the yoyo is back in hand", () => {
@@ -35,6 +43,31 @@ describe("an unreadable save", () => {
     const ordinaryNewGame = renderToStaticMarkup(<App store={store} />);
     expect(ordinaryNewGame).not.toContain("We couldn&#x27;t read your save.");
   });
+});
+
+describe("returning from an Absence", () => {
+  it("reports what the Auto-Thrower earned while the player was away", () => {
+    const store = restoreAfterAbsence(sleeperWithAutoThrower(), 8 * 60 * 60);
+
+    const markup = renderToStaticMarkup(<App store={store} />);
+
+    expect(markup).toContain("Welcome back");
+    expect(markup).toContain("You were away for 8 hours.");
+    expect(markup).toContain("Your Auto-Thrower kept every Throw Cycle moving");
+    expect(markup).toContain("earned 9,000 Style while you were away");
+    expect(markup).toMatch(new RegExp(`<button[^>]*>Dismiss</button>`));
+  });
+
+  it("explains why a yoyo without an Auto-Thrower earned nothing after it died", () => {
+    const store = restoreAfterAbsence(throwYoyo(initialState()), 8 * 60 * 60);
+
+    const markup = renderToStaticMarkup(<App store={store} />);
+
+    expect(markup).toContain("Your yoyo died when its Spin ran out.");
+    expect(markup).toContain("It earned 2.5 Style while you were away");
+    expect(markup).toContain("then nothing further without an Auto-Thrower");
+  });
+
 });
 
 describe("the Gear shop", () => {

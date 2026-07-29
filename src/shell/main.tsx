@@ -24,6 +24,8 @@ const store = createGameStore({
     ? {}
     : { restored: { tickedAt: saved.savedAt, state: saved.state } }),
 });
+// Resolve a restored Absence through the ordinary tick before the first player-visible render.
+store.tick();
 const saveHost: SaveHost = {
   isVisible: () => document.visibilityState === "visible",
   onVisibilityChange: (listener) => {
