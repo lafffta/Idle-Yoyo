@@ -35,7 +35,8 @@ body::before {
 .shell {
   position: relative;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto auto auto;
+  gap: clamp(1.5rem, 4vw, 3rem);
   min-height: 100vh;
   padding: clamp(1.5rem, 4vw, 3.5rem);
 }
@@ -70,6 +71,7 @@ body::before {
   grid-template-columns: minmax(20rem, 1.35fr) minmax(18rem, 0.85fr);
   gap: clamp(1rem, 2vw, 1.5rem);
   width: min(100%, 68rem);
+  margin-top: clamp(1rem, 3vw, 3rem);
 }
 
 .canvas-card,
@@ -128,8 +130,13 @@ body::before {
   text-transform: uppercase;
 }
 
-h1 {
+h1,
+h2,
+h3 {
   margin: 0;
+}
+
+h1 {
   color: #aca596;
   font-size: clamp(0.78rem, 1.5vw, 0.9rem);
   font-weight: 600;
@@ -137,13 +144,13 @@ h1 {
   text-transform: uppercase;
 }
 
-.style-value {
+.sustained-style-value {
   display: block;
   min-height: 1.25em;
   margin: 0.12em 0 0.18em;
   color: #f4f0e6;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: clamp(4rem, 13vw, 8.5rem);
+  font-size: clamp(3.5rem, 9vw, 7rem);
   font-variant-numeric: tabular-nums;
   font-weight: 300;
   letter-spacing: -0.08em;
@@ -160,6 +167,26 @@ h1 {
   margin: 0;
 }
 
+.style-balance {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.65rem;
+  margin-top: 1.5rem;
+  color: #8e887d;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.style-balance-value {
+  color: #f4f0e6;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
 .throw-control {
   display: grid;
   justify-items: center;
@@ -167,33 +194,39 @@ h1 {
   margin-top: 2rem;
 }
 
-.throw-control button {
-  min-width: 10rem;
-  padding: 0.85rem 1.5rem;
+.action-button {
   border: 1px solid #de764b;
   border-radius: 0.25rem;
   color: #181713;
   background: #de764b;
-  font: 600 0.8rem/1 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-weight: 600;
   cursor: pointer;
 }
 
-.throw-control button:hover:not(:disabled) {
+.action-button:hover:not(:disabled) {
   background: #ef8b61;
 }
 
-.throw-control button:focus-visible {
+.action-button:focus-visible {
   outline: 2px solid #f4f0e6;
   outline-offset: 3px;
 }
 
-.throw-control button:disabled {
+.action-button:disabled {
   border-color: #625d53;
   color: #8e887d;
   background: transparent;
   cursor: not-allowed;
+}
+
+.throw-button {
+  min-width: 10rem;
+  padding: 0.85rem 1.5rem;
+  font-size: 0.8rem;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 .throw-status {
@@ -201,6 +234,104 @@ h1 {
   margin: 0;
   color: #8e887d;
   font-size: 0.75rem;
+}
+
+.gear-shop {
+  justify-self: center;
+  width: min(100%, 68rem);
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid rgba(244, 240, 230, 0.12);
+  border-radius: 0.35rem;
+  background: rgba(35, 33, 28, 0.64);
+  box-shadow: 0 2rem 6rem rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+}
+
+.gear-shop-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 1.25rem;
+}
+
+.gear-shop-heading .eyebrow {
+  margin-bottom: 0.45rem;
+}
+
+.gear-shop-heading h2 {
+  color: #f4f0e6;
+  font-size: clamp(1.25rem, 2.5vw, 1.7rem);
+  font-weight: 500;
+}
+
+.gear-shop-heading p:last-child {
+  max-width: 18rem;
+  margin: 0;
+  color: #8e887d;
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.gear-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.gear-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(244, 240, 230, 0.1);
+  border-radius: 0.25rem;
+  background: rgba(24, 23, 19, 0.55);
+}
+
+.gear-row.is-unaffordable {
+  border-color: rgba(244, 240, 230, 0.07);
+}
+
+.gear-copy {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.gear-copy h3 {
+  color: #f4f0e6;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.gear-result {
+  color: #b8b0a1;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.76rem;
+}
+
+.gear-purchase {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  gap: 1rem;
+}
+
+.gear-price {
+  min-width: 5.5rem;
+  color: #de764b;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.gear-buy-button {
+  min-width: 10.5rem;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.7rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
 }
 
 .footnote {
@@ -226,6 +357,16 @@ h1 {
   .style-card {
     padding: 2.5rem 1.5rem;
   }
+
+  .gear-shop-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .gear-shop-heading p:last-child {
+    text-align: left;
+  }
 }
 
 @media (max-width: 32rem) {
@@ -235,5 +376,14 @@ h1 {
 
   .style-card {
     padding: 3rem 1.25rem;
+  }
+
+  .gear-row {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+
+  .gear-purchase {
+    justify-content: space-between;
   }
 }

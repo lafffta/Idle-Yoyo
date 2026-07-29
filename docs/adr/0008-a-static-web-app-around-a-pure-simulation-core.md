@@ -48,4 +48,8 @@ The core is testable, deterministic and portable. If a native client is ever bui
 
 Save format is a serialisation of `GameState` plus a timestamp, so the shape of that type is a compatibility surface from the first save onwards. It needs a version field before anyone else plays it, not after.
 
+ADR 0013 adds the raw Bearing and Rewind Speed levels captured by the active Throw. Those are
+save state rather than stored effective stats: decay and duration still derive from levels plus
+the current module-level constants, so a rebalance reaches old saves normally.
+
 Twelve tiers of persistent Tricks means `GameState` accumulates a lot of small permanent facts. Returning a fresh state object every frame from `advance` will allocate heavily; expect to mutate in place behind the pure signature, or to split per-frame state from permanent state, once the frame budget says so.
