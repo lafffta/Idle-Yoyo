@@ -9,6 +9,9 @@ type GameStoreOptions = {
 export type GameStore = {
   getState: () => GameState;
   tick: () => void;
+  throwYoyo: () => void;
+  isThrowAvailable: () => boolean;
+  subscribeToThrowAvailability: (listener: () => void) => () => void;
 };
 
 /**
@@ -18,13 +21,36 @@ export type GameStore = {
 export function createGameStore({ now }: GameStoreOptions): GameStore {
   let state = throwYoyo(initialState());
   let lastTick = now();
+  const throwAvailabilityListeners = new Set<() => void>();
+
+  const replaceState = (nextState: GameState) => {
+    const availabilityChanged = (state.phase === "Ready") !== (nextState.phase === "Ready");
+    state = nextState;
+    if (availabilityChanged) {
+      for (const listener of throwAvailabilityListeners) listener();
+    }
+  };
 
   return {
     getState: () => state,
     tick: () => {
       const tickedAt = now();
-      state = advance(state, (tickedAt - lastTick) / 1_000);
+      replaceState(advance(state, (tickedAt - lastTick) / 1_000));
       lastTick = tickedAt;
+    },
+    throwYoyo: () => {
+      const thrown = throwYoyo(state);
+      if (thrown === state) return;
+
+      // A Ready yoyo may have waited through a paused frame loop. The new Throw starts now,
+      // rather than inheriting time that passed before the player acted.
+      lastTick = now();
+      replaceState(thrown);
+    },
+    isThrowAvailable: () => state.phase === "Ready",
+    subscribeToThrowAvailability: (listener) => {
+      throwAvailabilityListeners.add(listener);
+      return () => throwAvailabilityListeners.delete(listener);
     },
   };
 }

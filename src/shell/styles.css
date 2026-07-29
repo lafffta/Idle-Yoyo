@@ -160,6 +160,49 @@ h1 {
   margin: 0;
 }
 
+.throw-control {
+  display: grid;
+  justify-items: center;
+  gap: 0.7rem;
+  margin-top: 2rem;
+}
+
+.throw-control button {
+  min-width: 10rem;
+  padding: 0.85rem 1.5rem;
+  border: 1px solid #de764b;
+  border-radius: 0.25rem;
+  color: #181713;
+  background: #de764b;
+  font: 600 0.8rem/1 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.throw-control button:hover:not(:disabled) {
+  background: #ef8b61;
+}
+
+.throw-control button:focus-visible {
+  outline: 2px solid #f4f0e6;
+  outline-offset: 3px;
+}
+
+.throw-control button:disabled {
+  border-color: #625d53;
+  color: #8e887d;
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.throw-status {
+  min-height: 1.3em;
+  margin: 0;
+  color: #8e887d;
+  font-size: 0.75rem;
+}
+
 .footnote {
   justify-self: center;
   margin: 0;
