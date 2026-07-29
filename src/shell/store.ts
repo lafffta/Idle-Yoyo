@@ -14,9 +14,16 @@ import {
   throwYoyo,
 } from "../core/simulation.js";
 
+export type GameCheckpoint = {
+  tickedAt: number;
+  state: GameState;
+};
+
 type GameStoreOptions = {
   /** Milliseconds from the device wall clock. Injected so elapsed time is testable. */
   now: () => number;
+  /** A restored state and the wall-clock instant from which its next ordinary tick continues. */
+  restored?: GameCheckpoint;
 };
 
 /** Product assumption: the shop's projected night is eight hours away. */
@@ -111,6 +118,8 @@ function projectedNight(state: GameState): ProjectedNight {
 
 export type GameStore = {
   getState: () => GameState;
+  checkpoint: () => GameCheckpoint;
+  subscribeToPurchases: (listener: () => void) => () => void;
   getAutoThrowerOffer: () => AutoThrowerOffer;
   getProjectedNight: () => ProjectedNight;
   subscribeToAutoThrowerOffer: (listener: () => void) => () => void;
@@ -128,10 +137,11 @@ export type GameStore = {
  * Owns the live state outside React. A frame asks it to tick, but the wall clock alone decides
  * how much time passes; requestAnimationFrame is only the scheduler (ADR 0011).
  */
-export function createGameStore({ now }: GameStoreOptions): GameStore {
-  let state = throwYoyo(initialState());
-  let lastTick = now();
+export function createGameStore({ now, restored }: GameStoreOptions): GameStore {
+  let state = restored?.state ?? throwYoyo(initialState());
+  let lastTick = restored?.tickedAt ?? now();
   const throwAvailabilityListeners = new Set<() => void>();
+  const purchaseListeners = new Set<() => void>();
   const gearShopListeners = new Set<() => void>();
   const autoThrowerOfferListeners = new Set<() => void>();
   let currentGearShop = gearShop(state);
@@ -173,15 +183,35 @@ export function createGameStore({ now }: GameStoreOptions): GameStore {
     }
   };
 
+  const purchase = (nextState: GameState) => {
+    if (nextState === state) return;
+    replaceState(nextState);
+    for (const listener of purchaseListeners) listener();
+  };
+
+  const tickAt = (tickedAt: number) => {
+    replaceState(advance(state, (tickedAt - lastTick) / 1_000));
+    lastTick = tickedAt;
+  };
+
   return {
     getState: () => state,
+    checkpoint: () => {
+      const tickedAt = now();
+      tickAt(tickedAt);
+      return { tickedAt, state };
+    },
+    subscribeToPurchases: (listener) => {
+      purchaseListeners.add(listener);
+      return () => purchaseListeners.delete(listener);
+    },
     getAutoThrowerOffer: () => currentAutoThrowerOffer,
     getProjectedNight: () => projectedNight(state),
     subscribeToAutoThrowerOffer: (listener) => {
       autoThrowerOfferListeners.add(listener);
       return () => autoThrowerOfferListeners.delete(listener);
     },
-    buyAutoThrower: () => replaceState(buyAutoThrowerInCore(state)),
+    buyAutoThrower: () => purchase(buyAutoThrowerInCore(state)),
     getGearShop: () => currentGearShop,
     subscribeToGearShop: (listener) => {
       gearShopListeners.add(listener);
@@ -189,12 +219,10 @@ export function createGameStore({ now }: GameStoreOptions): GameStore {
     },
     buyGear: (gearId) => {
       const gear = GEAR.find(({ id }) => id === gearId);
-      if (gear) replaceState(gear.buy(state));
+      if (gear) purchase(gear.buy(state));
     },
     tick: () => {
-      const tickedAt = now();
-      replaceState(advance(state, (tickedAt - lastTick) / 1_000));
-      lastTick = tickedAt;
+      tickAt(now());
     },
     throwYoyo: () => {
       const thrown = throwYoyo(state);
