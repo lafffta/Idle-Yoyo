@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { App } from "./app.js";
 import { createGameStore } from "./store.js";
+import { completeThrowCycles } from "./test-helpers.js";
 
 describe("the Throw control", () => {
   it("explains when Throw is unavailable and enables it when the yoyo is back in hand", () => {
@@ -19,5 +20,58 @@ describe("the Throw control", () => {
     const whenReady = renderToStaticMarkup(<App store={store} />);
     expect(whenReady).toMatch(/<button(?![^>]*disabled)[^>]*>Throw<\/button>/);
     expect(whenReady).toContain("Ready to Throw.");
+  });
+});
+
+describe("the Gear shop", () => {
+  it("leads with Sustained Style and keeps every unaffordable Gear row visible", () => {
+    const store = createGameStore({ now: () => 0 });
+
+    const markup = renderToStaticMarkup(<App store={store} />);
+
+    expect(markup).toMatch(/<h1[^>]*>Sustained Style<\/h1>/);
+    expect(markup).toMatch(
+      /<output[^>]*aria-label="Sustained Style"[^>]*>0.31<\/output>/,
+    );
+    expect(markup).toMatch(/<output[^>]*aria-label="Current Style"[^>]*>0<\/output>/);
+
+    for (const [name, price, afterPurchase] of [
+      ["Throw Power", "10 Style", "0.4 Sustained Style"],
+      ["Bearing", "25 Style", "0.32 Sustained Style"],
+      ["Rewind Speed", "15 Style", "0.32 Sustained Style"],
+    ]) {
+      expect(markup).toMatch(new RegExp(`<h3[^>]*>${name}</h3>`));
+      expect(markup).toContain(price);
+      expect(markup).toContain(afterPurchase);
+      expect(markup).toMatch(new RegExp(`<button[^>]*disabled=""[^>]*>Buy ${name}</button>`));
+    }
+  });
+
+  it("updates the headline, balance, next price and affordability on purchase", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+    const advanceClock = (milliseconds: number) => {
+      now += milliseconds;
+    };
+
+    completeThrowCycles(store, advanceClock, 4);
+    store.throwYoyo();
+    now += 1_000;
+    store.tick();
+
+    const affordable = renderToStaticMarkup(<App store={store} />);
+    expect(affordable).toMatch(
+      /<button(?![^>]*disabled)[^>]*>Buy Throw Power<\/button>/,
+    );
+
+    store.buyGear("throwPower");
+
+    const bought = renderToStaticMarkup(<App store={store} />);
+    expect(bought).toMatch(
+      /<output[^>]*aria-label="Sustained Style"[^>]*>0.4<\/output>/,
+    );
+    expect(bought).toMatch(/<output[^>]*aria-label="Current Style"[^>]*>0.9<\/output>/);
+    expect(bought).toContain("11.5 Style");
+    expect(bought).toMatch(/<button[^>]*disabled=""[^>]*>Buy Throw Power<\/button>/);
   });
 });

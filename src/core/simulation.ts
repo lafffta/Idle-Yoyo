@@ -21,6 +21,12 @@ import { PROVISIONAL } from "./constants.js";
  */
 export type Phase = "Sleeping" | "Rewinding" | "Ready";
 
+/** The timing Gear a Throw began with, kept until that Throw Cycle is complete. */
+export type ActiveThrowGear = {
+  bearingLevel: number;
+  rewindSpeedLevel: number;
+};
+
 /**
  * The save-compatibility surface (ADR 0008). Effective stats are never stored here: they
  * are derived from levels and the provisional constants, so that a rebalance cannot leave
@@ -47,6 +53,11 @@ export type GameState = {
   bearingLevel: number;
   rewindSpeedLevel: number;
   /**
+   * The Bearing and Rewind Speed captured by the last Throw. Purchases change owned Gear and
+   * readouts immediately, but `advance` uses these levels until the next Throw (ADR 0013).
+   */
+  activeThrowGear: ActiveThrowGear;
+  /**
    * Kit, and the only member of it — owned rather than levelled, and permanent (ADR 0006).
    *
    * Sits apart from the Gear levels above deliberately. Retire clears Gear eleven times over
@@ -58,7 +69,7 @@ export type GameState = {
   hasAutoThrower: boolean;
 };
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export function initialState(): GameState {
   return {
@@ -71,6 +82,7 @@ export function initialState(): GameState {
     throwPowerLevel: 0,
     bearingLevel: 0,
     rewindSpeedLevel: 0,
+    activeThrowGear: { bearingLevel: 0, rewindSpeedLevel: 0 },
     hasAutoThrower: false,
   };
 }
@@ -101,9 +113,18 @@ export function buyThrowPower(state: GameState): GameState {
   return { ...state, style: state.style - cost, throwPowerLevel: state.throwPowerLevel + 1 };
 }
 
-/** Derived from the Gear level, never stored. A better Bearing drains Spin more slowly. */
+function decayRateAtLevel(level: number): number {
+  return PROVISIONAL.baseDecay * PROVISIONAL.bearingDecayPerLevel ** level;
+}
+
+/** The decay rate of the Sleeper currently on the string. */
 export function decayRate(state: GameState): number {
-  return PROVISIONAL.baseDecay * PROVISIONAL.bearingDecayPerLevel ** state.bearingLevel;
+  return decayRateAtLevel(state.activeThrowGear.bearingLevel);
+}
+
+/** The decay rate the next Throw will capture from the Bearing the player owns. */
+function ownedDecayRate(state: GameState): number {
+  return decayRateAtLevel(state.bearingLevel);
 }
 
 /** What the next level of the Bearing costs. Geometric in the levels already owned. */
@@ -114,21 +135,8 @@ export function bearingCost(state: GameState): number {
 /**
  * Buy a level of the Bearing, so the Sleeper drains more slowly and lasts longer.
  *
- * **A known deviation from the ticket, recorded here rather than quietly taken.** #7 asks that
- * purchases "apply from the next Throw, not retroactively". Throw Power manages that for
- * free, because the Spin a Throw starts with is stored on the state and the Sleeper in flight
- * keeps it. The Bearing has no such anchor: the decay rate is derived from this level every
- * time `advance` asks for it, so buying mid-Sleeper slows the yoyo already on the string.
- *
- * Honouring the ticket literally would mean either storing the level a Throw was made at —
- * widening the save surface ADR 0008 asks us to keep narrow, and which the core-loop spec
- * enumerates without such a field — or refusing purchases outside `Ready`, which nobody asked
- * for and which would stop a player shopping while the yoyo sleeps. Neither looked worth it
- * for an effect a player reads as the purchase working immediately.
- *
- * Nothing is rewritten either way: the Style already banked and the Spin the Throw started
- * with both stand. If the next Throw really must be the boundary, that is a design decision
- * for an ADR, not something to change here on its own.
+ * The owned level moves immediately, so its next price and Sustained Style do too. The active
+ * Throw keeps the level captured in `activeThrowGear` until the yoyo is Thrown again (ADR 0013).
  */
 export function buyBearing(state: GameState): GameState {
   const cost = bearingCost(state);
@@ -144,9 +152,19 @@ export function buyBearing(state: GameState): GameState {
  * the decay rate cancels out of sustained earnings and the Bearing stops working at all
  * (ADR 0003). Removing it would quietly delete a shop row rather than merely rebalance one.
  */
-export function rewindDuration(state: GameState): number {
-  const wound = PROVISIONAL.baseRewind * PROVISIONAL.rewindPerLevel ** state.rewindSpeedLevel;
+function rewindDurationAtLevel(level: number): number {
+  const wound = PROVISIONAL.baseRewind * PROVISIONAL.rewindPerLevel ** level;
   return Math.max(wound, PROVISIONAL.rewindFloor);
+}
+
+/** The Rewind duration belonging to the Throw Cycle currently in progress. */
+export function rewindDuration(state: GameState): number {
+  return rewindDurationAtLevel(state.activeThrowGear.rewindSpeedLevel);
+}
+
+/** The Rewind duration the next Throw will capture from the Gear the player owns. */
+function ownedRewindDuration(state: GameState): number {
+  return rewindDurationAtLevel(state.rewindSpeedLevel);
 }
 
 /** What the next level of Rewind Speed costs. Geometric in the levels already owned. */
@@ -161,9 +179,8 @@ export function rewindSpeedCost(state: GameState): number {
  * Rewind duration and the decay rate, so these are two prices for one effect rather than
  * two effects (ADR 0003).
  *
- * Derived from the level for the same reason as the Bearing, and with the same deviation from
- * #7's "applies from the next Throw" — see `buyBearing`. A Rewind already longer than its new
- * duration simply finishes; `advance` clamps so that costs no time.
+ * The owned level and its readouts move immediately. A Rewind already in progress keeps the
+ * duration captured when its Throw began; the shorter duration starts next Throw (ADR 0013).
  */
 export function buyRewindSpeed(state: GameState): GameState {
   const cost = rewindSpeedCost(state);
@@ -202,7 +219,16 @@ export function buyAutoThrower(state: GameState): GameState {
 /** A Throw is legal only from `Ready`. */
 export function throwYoyo(state: GameState): GameState {
   if (state.phase !== "Ready") return state;
-  return { ...state, phase: "Sleeping", spin: throwPower(state), phaseElapsed: 0 };
+  return {
+    ...state,
+    phase: "Sleeping",
+    spin: throwPower(state),
+    phaseElapsed: 0,
+    activeThrowGear: {
+      bearingLevel: state.bearingLevel,
+      rewindSpeedLevel: state.rewindSpeedLevel,
+    },
+  };
 }
 
 /**
@@ -260,10 +286,9 @@ export function advance(state: GameState, seconds: number): GameState {
     if (current.phase === "Rewinding") {
       // Earns nothing. ADR 0003: this dead time is what makes Uptime a quantity worth
       // improving, so the Bearing keeps working once an Auto-Thrower is in play.
-      // Clamped at zero so that no call can advance further than the delta it was given.
-      // The Rewind duration is derived, so buying Rewind Speed part-way through a Rewind can
-      // shorten it to less than the string has already spent winding; a negative remainder
-      // would then be subtracted from the delta, handing the overshoot back as extra time.
+      // Clamped at zero so that no call can advance further than the delta it was given. A
+      // migrated or malformed save may carry more phase time than its captured Gear permits;
+      // subtracting that negative remainder would hand the overshoot back as newly minted time.
       const untilWound = Math.max(rewindDuration(current) - current.phaseElapsed, 0);
       const winds = remaining >= untilWound;
       const dt = winds ? untilWound : remaining;
@@ -311,8 +336,8 @@ export function advance(state: GameState, seconds: number): GameState {
  * disagree with this.
  */
 function uptime(state: GameState): number {
-  const sleeperLength = throwPower(state) / decayRate(state);
-  return sleeperLength / (sleeperLength + rewindDuration(state));
+  const sleeperLength = throwPower(state) / ownedDecayRate(state);
+  return sleeperLength / (sleeperLength + ownedRewindDuration(state));
 }
 
 /**
@@ -368,11 +393,10 @@ export function currentStyleRate(state: GameState): number {
  * readout would not exist at all under exponential decay, where the yoyo never quite dies. It is
  * a genuine dividend of ADR 0001 rather than a convenience.
  *
- * What "exact" claims is worth stating precisely, because the prototype on #3 found the edge:
- * the decay rate is derived from the Bearing level rather than snapshotted at the Throw, so
- * buying a Bearing mid-Sleeper moves the death of the yoyo already on the string and re-quotes
- * this figure. The projection is exact about the yoyo as it stands; it is not a promise that no
- * purchase can move it. #7 settled that deliberately — see `buyBearing`.
+ * ADR 0013 makes that exactness stable for the life of the Sleeper: a Bearing bought mid-Throw
+ * changes owned Gear and Sustained Style immediately, while this projection keeps using the
+ * active Throw's captured decay rate. The death and remaining yield the player was shown do not
+ * move under the yoyo already on the string.
  *
  * Counts only what is still to come, so it falls as the Sleeper is spent and is zero whenever
  * there is no Throw in progress to project.

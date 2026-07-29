@@ -268,8 +268,8 @@ describe("the simulation as a pure function of its inputs", () => {
   });
 
   it("carries a schema version from the very first save", () => {
-    expect(initialState().version).toBe(1);
-    expect(advance(freshSleeper(), 3.7).version).toBe(1);
+    expect(initialState().version).toBe(2);
+    expect(advance(freshSleeper(), 3.7).version).toBe(2);
   });
 });
 
@@ -605,11 +605,10 @@ describe("buying the Bearing", () => {
     expect(yieldOfOneThrow(wellBought)).toBeCloseTo(5.2948, 4);
   });
 
-  it("slows the Sleeper on the string without rewriting what it has already banked", () => {
-    // A second into a Sleeper the yoyo has 80 Spin and 0.9 Style banked. The Bearing is
-    // derived from the level rather than snapshotted at the Throw (ADR 0008), so it slows
-    // the yoyo in hand — but it does not un-earn the 0.9 or alter the Spin still on the
-    // string. The remaining 80 Spin now drains at 18.4/s: 4.3478s and 1.7391 Style to come.
+  it("leaves the Sleeper on the string alone and applies from the next Throw", () => {
+    // A second into a Sleeper the yoyo has 80 Spin, four seconds of life and 1.6 Style left.
+    // Buying a Bearing moves the owned level immediately, but the active Throw keeps the
+    // Bearing it began with. Once wound, the next Throw uses the newly owned level.
     const midSleeper = midSleeperWithStyle(1);
 
     const bought = buyBearing(midSleeper);
@@ -617,8 +616,12 @@ describe("buying the Bearing", () => {
     expect(bought.spin).toBe(midSleeper.spin);
     expect(bought.lifetimeStyle).toBe(midSleeper.lifetimeStyle);
     expect(bought.style).toBeCloseTo(midSleeper.style - 25, 10);
-    expect(advance(bought, 4.3478).style - bought.style).toBeCloseTo(1.7391, 4);
-    expect(advance(bought, 4.3479).phase).toBe("Rewinding");
+    expect(advance(bought, 4).style - bought.style).toBeCloseTo(1.6, 10);
+    expect(advance(bought, 4).phase).toBe("Rewinding");
+
+    const wound = advance(bought, 7);
+    expect(wound.phase).toBe("Ready");
+    expect(sleeperLength(wound)).toBeCloseTo(5.434783, 5);
   });
 
   it("is a purchase and not a tick: buying moves no time and earns nothing", () => {
@@ -646,24 +649,18 @@ describe("buying Rewind Speed", () => {
     expect(uptime(bought)).toBeCloseTo(0.649351, 5);
   });
 
-  it("finishes a Rewind it has already outlasted at once, without the clock jumping", () => {
-    // 2.9s into a 3s Rewind, one level of Rewind Speed makes the Rewind 2.7s — a Rewind the
-    // string has already spent longer on than it now takes. It ends immediately, and the 0.2s
-    // of overshoot is not handed back as extra time: half a second given is half a second
-    // passed.
-    //
-    // Watched by an Auto-Thrower, because that is both where the surplus would do damage and
-    // the only place it shows. Handed back, the 0.2s would be minted the instant the machine
-    // re-Throws, and the new Sleeper would be found 0.7s old with 86 Spin rather than 0.5s old
-    // with 90. A yoyo left waiting in the hand instead has nothing to spend the surplus on, so
-    // there is nothing to see: `Ready` records no time at all.
-    const midRewind = advance({ ...automaticSleeper(), style: 1000 }, 7.9);
+  it("leaves the current Rewind alone and shortens the next Throw Cycle", () => {
+    // 2.9s into a 3s Rewind, one level of Rewind Speed would make a new Rewind 2.7s. The
+    // string already winding still gets its last 0.1s; the next Throw owns the shorter Rewind.
+    const midRewind = advance({ ...freshSleeper(), style: 1000 }, 7.9);
     expect(midRewind.phase).toBe("Rewinding");
 
-    const afterHalfASecond = advance(buyRewindSpeed(midRewind), 0.5);
+    const bought = buyRewindSpeed(midRewind);
 
-    expect(afterHalfASecond.phase).toBe("Sleeping");
-    expect(afterHalfASecond.spin).toBeCloseTo(90, 10);
+    expect(advance(bought, 0.05).phase).toBe("Rewinding");
+    const wound = advance(bought, 0.1);
+    expect(wound.phase).toBe("Ready");
+    expect(throwCycleLength(wound)).toBeCloseTo(7.7, 6);
   });
 
   it("leaves the Sleeper alone: it is dead time it buys back, not spinning time", () => {
@@ -959,6 +956,21 @@ describe("the Auto-Thrower keeping the loop turning", () => {
     expect(midRewind.phase).toBe("Rewinding");
     expect(laterInTheSameRewind.phase).toBe("Rewinding");
     expect(laterInTheSameRewind.style).toBeCloseTo(midRewind.style, 10);
+  });
+
+  it("captures Gear bought mid-cycle when it re-Throws inside one advance", () => {
+    const oneSecondIn = advance({ ...automaticSleeper(), style: 1_000 }, 1);
+    const bought = buyBearing(oneSecondIn);
+
+    // The current opening Throw still takes its original remaining 4s plus 3s Rewind. At that
+    // internal boundary the machine re-Throws and captures the Bearing bought while it slept.
+    const nextThrow = advance(bought, 7);
+    expect(nextThrow.phase).toBe("Sleeping");
+    expect(nextThrow.spin).toBeCloseTo(100, 10);
+    expect(nextThrow.activeThrowGear.bearingLevel).toBe(1);
+
+    // Five seconds would kill an opening Sleeper; the newly captured Bearing leaves Spin.
+    expect(advance(nextThrow, 5).phase).toBe("Sleeping");
   });
 
   it("throws at the Throw Power the player owns, not the one they had when they bought it", () => {
@@ -1401,28 +1413,19 @@ describe("the projected yield of the Throw in progress", () => {
   });
 
   /**
-   * The prototype on #3 raised this as its first finding, against the word *exact* in this
-   * ticket: because the decay rate is derived from the Bearing level rather than snapshotted at
-   * the Throw, buying a Bearing mid-Sleeper moves the death of the yoyo already on the string,
-   * and with it a projection the player has already been shown.
-   *
-   * #7 settled it in writing rather than by snapshotting `D` — see `buyBearing` — so the
-   * behaviour is deliberate, and what "exact" claims is worth pinning down precisely. The
-   * projection is exact about the yoyo as it stands, not a promise that no purchase can move
-   * it. The reading changes the instant the Bearing is bought, and the new reading is exact in
-   * turn. What is never rewritten is Style already banked.
+   * ADR 0013 makes the projection a promise about the Sleeper the player can see. Buying a
+   * Bearing changes the next Throw and Sustained Style immediately, but it cannot move the
+   * death or remaining yield of the Throw already on the string.
    */
-  it("re-quotes exactly, rather than staying wrong, when a Bearing is bought mid-Sleeper", () => {
+  it("stays exact when a Bearing is bought mid-Sleeper", () => {
     const midSleeper = midSleeperWithStyle(1);
     const quotedBefore = projectedYield(midSleeper);
 
     const bought = buyBearing(midSleeper);
 
-    // 80 Spin now draining at 18.4/s rather than 20 is worth 1.7391, not 1.6.
+    // The current 80 Spin keeps draining at 20/s and is still worth exactly 1.6 Style.
     expect(quotedBefore).toBeCloseTo(1.6, 10);
-    expect(projectedYield(bought)).toBeCloseTo(1.7391, 4);
-    expect(projectedYield(bought)).toBeGreaterThan(quotedBefore);
-    // Exact again from here, and the 0.9 the Sleeper already banked is not un-earned.
+    expect(projectedYield(bought)).toBe(quotedBefore);
     expect(projectedYield(bought)).toBeCloseTo(styleEarnedBeforeDying(bought), 8);
     expect(bought.lifetimeStyle).toBeCloseTo(0.9, 10);
     expect(bought.lifetimeStyle).toBe(midSleeper.lifetimeStyle);
@@ -1504,9 +1507,10 @@ describe("a save carrying Spin the yoyo is no longer spinning on", () => {
 
 /**
  * ADR 0008 makes `GameState` the save-compatibility surface, and says effective stats are
- * derived rather than stored: were effective Throw Power written into a save, changing the
- * step size or the base Throw Power in a rebalance would leave every existing save
- * disagreeing with the constants it was built from.
+ * derived rather than stored: were effective Throw Power, decay or Rewind duration written into
+ * a save, a rebalance would leave old saves disagreeing with the constants they were built from.
+ * ADR 0013 adds the active Throw's raw Gear levels, which retain the boundary without pinning an
+ * effective stat to old tuning.
  *
  * That is a claim about the shape of a save rather than about anything a player can see, so
  * it needs an assertion of the kind the rest of this file avoids — as with the clock guard
@@ -1516,10 +1520,16 @@ describe("a save carrying Spin the yoyo is no longer spinning on", () => {
  * for.
  */
 describe("the shape a save has to carry", () => {
-  it("keeps the Gear level and not the Spin it buys", () => {
-    const played = advance(throwYoyo(buyThrowPower(withStyle(10))), 2);
+  it("stores owned and active Throw Gear as levels, never derived rates", () => {
+    const shopped = afterShopping(
+      [buyThrowPower, 1],
+      [buyBearing, 1],
+      [buyRewindSpeed, 1],
+    );
+    const played = advance(throwYoyo(shopped), 2);
 
     expect(Object.keys(played).sort()).toEqual([
+      "activeThrowGear",
       "bearingLevel",
       "hasAutoThrower",
       "lifetimeStyle",
@@ -1531,6 +1541,7 @@ describe("the shape a save has to carry", () => {
       "throwPowerLevel",
       "version",
     ]);
+    expect(played.activeThrowGear).toEqual({ bearingLevel: 1, rewindSpeedLevel: 1 });
   });
 
   /**

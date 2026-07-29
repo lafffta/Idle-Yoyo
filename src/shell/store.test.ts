@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createGameStore } from "./store.js";
+import { completeThrowCycles } from "./test-helpers.js";
 
 describe("the shell clock", () => {
   it("advances a freshly Thrown yoyo by elapsed wall-clock time", () => {
@@ -104,4 +105,90 @@ describe("a player Throw", () => {
       expect(store.getState().style).toBeCloseTo((manualThrows + 1) * 2.5, 10);
     }
   });
+});
+
+describe("the Gear shop", () => {
+  it("quotes every opening purchase against Sustained Style even before it is affordable", () => {
+    const store = createGameStore({ now: () => 0 });
+
+    const shop = store.getGearShop();
+
+    expect(shop.sustainedStyle).toBeCloseTo(0.3125, 10);
+    expect(
+      shop.offers.map(({ name, price, sustainedStyleAfterPurchase, affordable }) => ({
+        name,
+        price,
+        sustainedStyleAfterPurchase,
+        affordable,
+      })),
+    ).toEqual([
+      {
+        name: "Throw Power",
+        price: 10,
+        sustainedStyleAfterPurchase: expect.closeTo(0.4, 10),
+        affordable: false,
+      },
+      {
+        name: "Bearing",
+        price: 25,
+        sustainedStyleAfterPurchase: expect.closeTo(0.3221649485, 10),
+        affordable: false,
+      },
+      {
+        name: "Rewind Speed",
+        price: 15,
+        sustainedStyleAfterPurchase: expect.closeTo(0.3246753247, 10),
+        affordable: false,
+      },
+    ]);
+  });
+
+  it("keeps Sustained Style still through time and refuses every unaffordable row", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+    const openingSustainedStyle = store.getGearShop().sustainedStyle;
+
+    for (const gear of ["throwPower", "bearing", "rewindSpeed"] as const) {
+      store.buyGear(gear);
+    }
+
+    expect(store.getState().style).toBe(0);
+    expect(store.getGearShop().offers.every(({ affordable }) => !affordable)).toBe(true);
+
+    now = 4_000;
+    store.tick();
+
+    expect(store.getState().style).toBeCloseTo(2.4, 10);
+    expect(store.getGearShop().sustainedStyle).toBe(openingSustainedStyle);
+  });
+
+  it("buys Throw Power without disturbing the Sleeper already on the string", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+    const advanceClock = (milliseconds: number) => {
+      now += milliseconds;
+    };
+
+    completeThrowCycles(store, advanceClock, 4);
+
+    store.throwYoyo();
+    now += 1_000;
+    store.tick();
+    expect(store.getState()).toMatchObject({ phase: "Sleeping", spin: 80 });
+    expect(store.getState().style).toBeCloseTo(10.9, 10);
+
+    store.buyGear("throwPower");
+
+    expect(store.getState()).toMatchObject({ phase: "Sleeping", spin: 80 });
+    expect(store.getState().style).toBeCloseTo(0.9, 10);
+    expect(store.getGearShop().sustainedStyle).toBeCloseTo(0.4, 10);
+    expect(store.getGearShop().offers[0]?.price).toBeCloseTo(11.5, 10);
+
+    now += 7_000;
+    store.tick();
+    expect(store.getState().phase).toBe("Ready");
+    store.throwYoyo();
+    expect(store.getState()).toMatchObject({ phase: "Sleeping", spin: 120 });
+  });
+
 });
