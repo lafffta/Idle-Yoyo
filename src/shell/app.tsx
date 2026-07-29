@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 
 import { formatNumber } from "./format.js";
 import type { GameStore } from "./store.js";
+import { YoyoCanvas } from "./yoyo-canvas.js";
 
 type AppProps = {
   store: GameStore;
@@ -40,11 +41,18 @@ export function App({ store }: AppProps) {
         <span>IDLE YOYO</span>
       </header>
 
-      <section className="style-card" aria-labelledby="style-heading">
-        <p className="eyebrow">Opening Throw</p>
-        <h1 id="style-heading">Style</h1>
-        <StyleTicker store={store} />
-        <p className="caption">Earned by the Sleeper on the string.</p>
+      <section className="game-stage" aria-label="Opening Throw">
+        <div className="canvas-card">
+          <p className="eyebrow">Live Throw Cycle</p>
+          <YoyoCanvas store={store} />
+        </div>
+
+        <div className="style-card" aria-labelledby="style-heading">
+          <p className="eyebrow">Opening Throw</p>
+          <h1 id="style-heading">Style</h1>
+          <StyleTicker store={store} />
+          <p className="caption">Earned by the Sleeper on the string.</p>
+        </div>
       </section>
 
       <p className="footnote">One Throw. Watch the pace change as its Spin runs down.</p>
