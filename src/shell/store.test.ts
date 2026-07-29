@@ -41,3 +41,67 @@ describe("the shell clock", () => {
     expect(store.getState().style).toBe(styleWhenTheSleeperDied);
   });
 });
+
+describe("a player Throw", () => {
+  it("starts a full-Throw-Power Sleeper when the yoyo is back in hand", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+
+    now = 8_000;
+    store.tick();
+    expect(store.getState().phase).toBe("Ready");
+
+    store.throwYoyo();
+
+    expect(store.getState()).toMatchObject({
+      phase: "Sleeping",
+      spin: 100,
+    });
+  });
+
+  it("starts the new Throw Cycle when the player Throws after waiting with the yoyo in hand", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+
+    now = 8_000;
+    store.tick();
+    expect(store.getState().phase).toBe("Ready");
+
+    now = 60_000;
+    store.throwYoyo();
+    now = 61_000;
+    store.tick();
+
+    expect(store.getState().phase).toBe("Sleeping");
+    expect(store.getState().style).toBeCloseTo(3.4, 10);
+  });
+
+  it("refuses early Throws and can keep consistent Throw Cycles going by hand", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+
+    store.throwYoyo();
+    expect(store.getState()).toMatchObject({ phase: "Sleeping", spin: 100, style: 0 });
+
+    now = 6_000;
+    store.tick();
+    expect(store.getState().phase).toBe("Rewinding");
+
+    store.throwYoyo();
+    expect(store.getState()).toMatchObject({ phase: "Rewinding", spin: 0, style: 2.5 });
+
+    now = 8_000;
+    store.tick();
+    expect(store.getState().phase).toBe("Ready");
+
+    for (let manualThrows = 1; manualThrows <= 4; manualThrows++) {
+      store.throwYoyo();
+      expect(store.getState()).toMatchObject({ phase: "Sleeping", spin: 100 });
+
+      now += 8_000;
+      store.tick();
+      expect(store.getState().phase).toBe("Ready");
+      expect(store.getState().style).toBeCloseTo((manualThrows + 1) * 2.5, 10);
+    }
+  });
+});

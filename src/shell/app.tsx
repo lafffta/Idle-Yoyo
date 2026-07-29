@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { formatNumber } from "./format.js";
 import type { GameStore } from "./store.js";
@@ -7,6 +7,9 @@ import { YoyoCanvas } from "./yoyo-canvas.js";
 type AppProps = {
   store: GameStore;
 };
+
+const THROW_READY_COPY = "Ready to Throw.";
+const THROW_WAITING_COPY = "Available when the yoyo is back in hand.";
 
 function StyleTicker({ store }: AppProps) {
   const output = useRef<HTMLOutputElement>(null);
@@ -31,6 +34,30 @@ function StyleTicker({ store }: AppProps) {
   );
 }
 
+function ThrowControl({ store }: AppProps) {
+  const isReady = useSyncExternalStore(
+    store.subscribeToThrowAvailability,
+    store.isThrowAvailable,
+    store.isThrowAvailable,
+  );
+
+  return (
+    <div className="throw-control">
+      <button
+        type="button"
+        disabled={!isReady}
+        aria-describedby="throw-status"
+        onClick={store.throwYoyo}
+      >
+        Throw
+      </button>
+      <p id="throw-status" className="throw-status" aria-live="polite">
+        {isReady ? THROW_READY_COPY : THROW_WAITING_COPY}
+      </p>
+    </div>
+  );
+}
+
 export function App({ store }: AppProps) {
   return (
     <main className="shell">
@@ -41,7 +68,7 @@ export function App({ store }: AppProps) {
         <span>IDLE YOYO</span>
       </header>
 
-      <section className="game-stage" aria-label="Opening Throw">
+      <section className="game-stage" aria-label="Throw Cycle">
         <div className="canvas-card">
           <p className="eyebrow">Live Throw Cycle</p>
           <YoyoCanvas store={store} />
@@ -52,10 +79,11 @@ export function App({ store }: AppProps) {
           <h1 id="style-heading">Style</h1>
           <StyleTicker store={store} />
           <p className="caption">Earned by the Sleeper on the string.</p>
+          <ThrowControl store={store} />
         </div>
       </section>
 
-      <p className="footnote">One Throw. Watch the pace change as its Spin runs down.</p>
+      <p className="footnote">Throw again when the yoyo returns to your hand.</p>
     </main>
   );
 }

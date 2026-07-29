@@ -8,6 +8,9 @@
     // The shell is checked separately by tsconfig.app.json, which adds browser types.
     "lib": ["ES2022"],
     "types": ["node"],
+    // Vite reads the root config when it transforms shell TSX; the shell-only config below
+    // still owns DOM types and which files TypeScript checks (ADR 0012).
+    "jsx": "react-jsx",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
