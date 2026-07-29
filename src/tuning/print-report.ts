@@ -210,6 +210,11 @@ function describeAbsences(report: Report): string[] {
 
   if (ratio > 0) {
     said.push(`An Auto-Thrower is worth ${Math.round(ratio)}× the Style of an Absence without one`);
+  } else if (alone.absences > 0) {
+    said.push(
+      "Unbounded comparison     the player was away without an Auto-Thrower and earned no Style,",
+      "                         so the Auto-Thrower's improvement over that Absence is unbounded",
+    );
   } else if (working.absences > 0) {
     // The comparison is missing because the game is doing what ADR 0002 asks, and a reader owed
     // the machine's worth should be told that rather than left looking for a line that is not
@@ -225,7 +230,11 @@ function describeAbsences(report: Report): string[] {
     : ["The player was never away, so an Auto-Thrower could earn nothing."];
 }
 
-function print(timeline: Timeline, report: Report): void {
+/**
+ * The designer-facing Report is a testing seam: its claims are the behaviour this development
+ * tool exposes, while the formatting helpers that assemble them remain private implementation.
+ */
+export function renderReport(timeline: Timeline, report: Report): string {
   const played = totalSeconds(timeline.filter((period) => period.kind === "Session"));
 
   const lines = [
@@ -287,7 +296,11 @@ function print(timeline: Timeline, report: Report): void {
       `${formatDuration(played)} played`,
   ];
 
-  console.log(lines.join("\n"));
+  return lines.join("\n");
+}
+
+function print(timeline: Timeline, report: Report): void {
+  console.log(renderReport(timeline, report));
 }
 
 print(CANONICAL_TIMELINE, simulate(CANONICAL_TIMELINE));
