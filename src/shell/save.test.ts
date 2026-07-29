@@ -3,12 +3,22 @@ import { describe, expect, it } from "vitest";
 import { initialState, throwYoyo } from "../core/simulation.js";
 import {
   deserializeSave,
+  loadSave,
   SAVE_KEY,
   serializeSave,
   startSaving,
   type SaveHost,
 } from "./save.js";
 import { createGameStore, type GameStore } from "./store.js";
+
+function memoryStorage(initial: Record<string, string> = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+  };
+}
 
 function inactiveHost(): SaveHost {
   return {
@@ -37,10 +47,68 @@ describe("the saved game document", () => {
     });
     expect(JSON.parse(serialized).state).not.toHaveProperty("savedAt");
     expect(deserializeSave(serialized)).toEqual(saved);
+    expect(
+      loadSave({
+        storage: memoryStorage({ [SAVE_KEY]: serialized }),
+        now: () => 12_345,
+      }),
+    ).toEqual({ status: "loaded", saved });
   });
 
   it("treats a missing save as an ordinary new game", () => {
     expect(deserializeSave(null)).toBeNull();
+    expect(loadSave({ storage: memoryStorage(), now: () => 12_345 })).toEqual({
+      status: "missing",
+      saved: null,
+    });
+  });
+
+  it("fails if unreadable-save preservation is removed, because autosave would erase the player's original", () => {
+    const original = '{"savedAt":';
+    const storage = memoryStorage({ [SAVE_KEY]: original });
+
+    const loaded = loadSave({ storage, now: () => 12_345 });
+
+    expect(loaded.status).toBe("unreadable");
+    if (loaded.status !== "unreadable") throw new Error("expected an unreadable save");
+    expect(storage.getItem(SAVE_KEY)).toBeNull();
+    expect(storage.getItem(loaded.preservedKey)).toBe(original);
+
+    const state = throwYoyo({ ...initialState(), style: 10 });
+    const store = createGameStore({
+      now: () => 12_345,
+      restored: { tickedAt: 12_345, state },
+    });
+    startSaving({ store, storage, host: inactiveHost() });
+    store.buyGear("throwPower");
+
+    expect(storage.getItem(loaded.preservedKey)).toBe(original);
+    expect(storage.getItem(SAVE_KEY)).not.toBe(original);
+  });
+
+  it("preserves a save whose version this code does not understand", () => {
+    const original = serializeSave({
+      savedAt: 8_000,
+      state: { ...initialState(), version: 999 },
+    });
+    const storage = memoryStorage({ [SAVE_KEY]: original });
+
+    const loaded = loadSave({ storage, now: () => 12_345 });
+
+    expect(loaded.status).toBe("unreadable");
+    if (loaded.status !== "unreadable") throw new Error("expected an unreadable save");
+    expect(storage.getItem(loaded.preservedKey)).toBe(original);
+  });
+
+  it("preserves a parseable current-version document whose GameState is incomplete", () => {
+    const original = JSON.stringify({ savedAt: 8_000, state: { version: 2 } });
+    const storage = memoryStorage({ [SAVE_KEY]: original });
+
+    const loaded = loadSave({ storage, now: () => 12_345 });
+
+    expect(loaded.status).toBe("unreadable");
+    if (loaded.status !== "unreadable") throw new Error("expected an unreadable save");
+    expect(storage.getItem(loaded.preservedKey)).toBe(original);
   });
 });
 

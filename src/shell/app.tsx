@@ -11,10 +11,22 @@ import { YoyoCanvas } from "./yoyo-canvas.js";
 
 type AppProps = {
   store: GameStore;
+  saveWasUnreadable?: boolean;
 };
 
 const THROW_READY_COPY = "Ready to Throw.";
 const THROW_WAITING_COPY = "Available when the yoyo is back in hand.";
+
+function UnreadableSaveWarning() {
+  return (
+    <aside className="save-warning" role="alert">
+      <strong>We couldn't read your save.</strong>
+      <span>
+        A fresh game was started, and the original save was kept safely on this device.
+      </span>
+    </aside>
+  );
+}
 
 function StyleTicker({ store }: AppProps) {
   const output = useRef<HTMLOutputElement>(null);
@@ -168,7 +180,7 @@ function ThrowControl({ store }: AppProps) {
   );
 }
 
-export function App({ store }: AppProps) {
+export function App({ store, saveWasUnreadable = false }: AppProps) {
   const shop = useSyncExternalStore(
     store.subscribeToGearShop,
     store.getGearShop,
@@ -188,6 +200,8 @@ export function App({ store }: AppProps) {
         </span>
         <span>IDLE YOYO</span>
       </header>
+
+      {saveWasUnreadable ? <UnreadableSaveWarning /> : null}
 
       <section className="game-stage" aria-label="Throw Cycle">
         <div className="canvas-card">
