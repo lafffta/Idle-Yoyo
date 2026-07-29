@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  autoThrowerCost,
+  buyAutoThrower,
+  initialState,
+  throwYoyo,
+} from "../core/simulation.js";
 import { createGameStore } from "./store.js";
 import { completeThrowCycles } from "./test-helpers.js";
 
@@ -40,6 +46,25 @@ describe("the shell clock", () => {
     now = 60_000;
     store.tick();
     expect(store.getState().style).toBe(styleWhenTheSleeperDied);
+  });
+
+  it("uses savedAt as the first tick origin so an Absence is one ordinary tick", () => {
+    const savedAt = 1_000;
+    const now = savedAt + 8 * 60 * 60 * 1_000;
+    const state = throwYoyo(
+      buyAutoThrower({ ...initialState(), style: autoThrowerCost() }),
+    );
+    const store = createGameStore({
+      now: () => now,
+      restored: { tickedAt: savedAt, state },
+    });
+
+    expect(store.getState()).toEqual(state);
+
+    store.tick();
+
+    expect(store.getState()).toMatchObject({ phase: "Sleeping", spin: 100 });
+    expect(store.getState().style).toBeCloseTo(9_000, 10);
   });
 });
 

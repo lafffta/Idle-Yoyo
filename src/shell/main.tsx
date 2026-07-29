@@ -2,6 +2,12 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./app.js";
+import {
+  deserializeSave,
+  SAVE_KEY,
+  startSaving,
+  type SaveHost,
+} from "./save.js";
 import { createGameStore } from "./store.js";
 import "./styles.css";
 
@@ -9,8 +15,32 @@ const root = document.querySelector<HTMLElement>("#root");
 
 if (!root) throw new Error("Idle Yoyo could not find its page root.");
 
-// The live GameState is deliberately created outside React and never enters component state.
-const store = createGameStore({ now: Date.now });
+const saved = deserializeSave(window.localStorage.getItem(SAVE_KEY));
+
+// The live GameState and the save lifecycle stay outside React (ADRs 0008 and 0011).
+const store = createGameStore({
+  now: Date.now,
+  ...(saved === null
+    ? {}
+    : { restored: { tickedAt: saved.savedAt, state: saved.state } }),
+});
+const saveHost: SaveHost = {
+  isVisible: () => document.visibilityState === "visible",
+  onVisibilityChange: (listener) => {
+    document.addEventListener("visibilitychange", listener);
+    return () => document.removeEventListener("visibilitychange", listener);
+  },
+  every: (milliseconds, listener) => {
+    const interval = window.setInterval(listener, milliseconds);
+    return () => window.clearInterval(interval);
+  },
+};
+
+startSaving({
+  store,
+  storage: window.localStorage,
+  host: saveHost,
+});
 
 createRoot(root).render(
   <StrictMode>
