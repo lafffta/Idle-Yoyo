@@ -82,6 +82,113 @@ body::before {
   font-size: 0.85rem;
 }
 
+.style-guide {
+  justify-self: center;
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.75fr) minmax(20rem, 1.25fr) auto;
+  align-items: center;
+  gap: clamp(1rem, 3vw, 2rem);
+  width: min(100%, 68rem);
+  padding: clamp(1rem, 3vw, 1.5rem);
+  border: 1px solid rgba(222, 118, 75, 0.32);
+  border-radius: 0.35rem;
+  background:
+    linear-gradient(120deg, rgba(222, 118, 75, 0.09), transparent 55%),
+    rgba(35, 33, 28, 0.78);
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.2);
+}
+
+.style-guide-copy .eyebrow {
+  margin-bottom: 0.45rem;
+}
+
+.style-guide-copy h2 {
+  color: #f4f0e6;
+  font-size: clamp(1.15rem, 2.4vw, 1.55rem);
+  font-weight: 500;
+}
+
+.style-guide-copy > p:last-child,
+.style-guide-figure figcaption {
+  color: #b8b0a1;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.style-guide-copy > p:last-child {
+  margin: 0.65rem 0 0;
+}
+
+.style-guide-figure {
+  min-width: 0;
+  margin: 0;
+}
+
+.style-guide-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.style-guide-sleeper {
+  fill: rgba(222, 118, 75, 0.08);
+}
+
+.style-guide-rewind {
+  fill: rgba(244, 240, 230, 0.035);
+}
+
+.style-guide-axis {
+  stroke: rgba(244, 240, 230, 0.2);
+  stroke-width: 1;
+}
+
+.style-guide-live-rate {
+  fill: none;
+  stroke: #de764b;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.style-guide-average {
+  stroke: #f4f0e6;
+  stroke-dasharray: 6 5;
+  stroke-width: 2;
+}
+
+.style-guide-chart text {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 9px;
+}
+
+.style-guide-live-label {
+  fill: #de764b;
+}
+
+.style-guide-average-label {
+  fill: #f4f0e6;
+  text-anchor: middle;
+}
+
+.style-guide-phase-label {
+  fill: #8e887d;
+  letter-spacing: 0.08em;
+  text-anchor: middle;
+  text-transform: uppercase;
+}
+
+.style-guide-figure figcaption {
+  margin-top: 0.25rem;
+}
+
+.style-guide > .action-button {
+  padding: 0.7rem 0.95rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
 .absence-summary {
   justify-self: center;
   display: flex;
@@ -508,6 +615,15 @@ h1 {
 }
 
 @media (max-width: 50rem) {
+  .style-guide {
+    grid-template-columns: 1fr;
+    width: min(100%, 38rem);
+  }
+
+  .style-guide > .action-button {
+    justify-self: start;
+  }
+
   .game-stage {
     grid-template-columns: 1fr;
     width: min(100%, 38rem);

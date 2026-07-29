@@ -45,6 +45,36 @@ describe("an unreadable save", () => {
   });
 });
 
+describe("the first Throw Cycle explanation", () => {
+  it("shows the falling live Style rate and still Sustained Style average together", () => {
+    const store = createGameStore({ now: () => 0 });
+
+    const markup = renderToStaticMarkup(<App store={store} />);
+
+    expect(markup).toContain('aria-label="Understanding Sustained Style"');
+    expect(markup).toContain("Why Sustained Style holds still");
+    expect(markup).toContain("As the yoyo slows");
+    expect(markup).toContain('role="img"');
+    expect(markup).toContain("Live Style rate falls through a Throw Cycle");
+    expect(markup).toContain("Live Style rate");
+    expect(markup).toContain("Sustained Style average");
+    expect(markup).toContain("Sleeper");
+    expect(markup).toContain("Rewind earns no Style");
+    expect(markup).toContain("The average does not dip during Rewind");
+    expect(markup).toContain("Got it");
+  });
+
+  it("removes the explanation after the player dismisses it", () => {
+    const store = createGameStore({ now: () => 0 });
+
+    store.dismissSustainedStyleGuide();
+    const markup = renderToStaticMarkup(<App store={store} />);
+
+    expect(markup).not.toContain("Understanding Sustained Style");
+    expect(markup).not.toContain("Why Sustained Style holds still");
+  });
+});
+
 describe("returning from an Absence", () => {
   it("reports what the Auto-Thrower earned while the player was away", () => {
     const store = restoreAfterAbsence(sleeperWithAutoThrower(), 8 * 60 * 60);

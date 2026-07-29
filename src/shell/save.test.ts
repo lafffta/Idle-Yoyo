@@ -151,9 +151,38 @@ describe("the save policy", () => {
       expect(deserializeSave(writtenValue ?? null)).toEqual({
         savedAt: 7_000,
         state: store.getState(),
+        sustainedStyleGuideWasDismissed: false,
       });
     },
   );
+
+  it("keeps the Sustained Style guide dismissed through the existing save", () => {
+    let writtenValue: string | undefined;
+    const storage = {
+      getItem: () => null,
+      setItem: (_key: string, value: string) => {
+        writtenValue = value;
+      },
+    };
+    const store = createGameStore({ now: () => 7_000 });
+    startSaving({ store, storage, host: inactiveHost() });
+
+    store.dismissSustainedStyleGuide();
+
+    const saved = deserializeSave(writtenValue ?? null);
+    if (saved === null) throw new Error("expected the dismissal to be saved");
+    expect(saved.sustainedStyleGuideWasDismissed).toBe(true);
+
+    const restored = createGameStore({
+      now: () => 7_000,
+      restored: {
+        tickedAt: saved.savedAt,
+        state: saved.state,
+        sustainedStyleGuideWasDismissed: saved.sustainedStyleGuideWasDismissed,
+      },
+    });
+    expect(restored.isSustainedStyleGuideVisible()).toBe(false);
+  });
 
   it("writes when the page becomes hidden", () => {
     let now = 0;
