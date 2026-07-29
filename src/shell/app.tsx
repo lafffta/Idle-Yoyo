@@ -1,7 +1,12 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { formatNumber } from "./format.js";
-import type { GameStore, GearOffer, GearShop as GearShopState } from "./store.js";
+import type {
+  AutoThrowerOffer,
+  GameStore,
+  GearOffer,
+  GearShop as GearShopState,
+} from "./store.js";
 import { YoyoCanvas } from "./yoyo-canvas.js";
 
 type AppProps = {
@@ -77,6 +82,67 @@ function GearShop({ shop, store }: { shop: GearShopState; store: GameStore }) {
   );
 }
 
+function ProjectedNight({ store }: AppProps) {
+  const [projection, setProjection] = useState(() => store.getProjectedNight());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setProjection(store.getProjectedNight()), 1_000);
+    return () => window.clearInterval(interval);
+  }, [store]);
+
+  return (
+    <div className="night-projection" aria-label={`Projected ${projection.hours}-hour night`}>
+      <p>Projected {projection.hours}-hour night</p>
+      <div className="night-comparison">
+        <div>
+          <span>With Auto-Thrower</span>
+          <output aria-label="Projected night with Auto-Thrower">
+            {formatNumber(projection.withAutoThrower)} Style
+          </output>
+        </div>
+        <div>
+          <span>Without Auto-Thrower</span>
+          <output aria-label="Projected night without Auto-Thrower">
+            {formatNumber(projection.withoutAutoThrower)} Style
+          </output>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KitShop({ offer, store }: { offer: AutoThrowerOffer; store: GameStore }) {
+  return (
+    <section className="kit-shop" aria-label="Kit">
+      <div className="kit-shop-heading">
+        <div>
+          <p className="eyebrow">Kit</p>
+          <h2>Keep every Yoyo moving</h2>
+        </div>
+        <p>Kit stays with the player when Gear does not.</p>
+      </div>
+      <article className={`kit-row${offer.affordable || offer.owned ? "" : " is-unaffordable"}`}>
+        <div className="kit-copy">
+          <h3>Auto-Thrower</h3>
+          <p>Throws again the instant each Rewind finishes.</p>
+          <ProjectedNight store={store} />
+        </div>
+        <div className="kit-purchase">
+          <span className="kit-price">{formatNumber(offer.price)} Style</span>
+          <button
+            className="action-button kit-buy-button"
+            type="button"
+            disabled={!offer.affordable}
+            onClick={store.buyAutoThrower}
+          >
+            {offer.owned ? "Owned" : "Buy Auto-Thrower"}
+          </button>
+        </div>
+      </article>
+    </section>
+  );
+}
+
 function ThrowControl({ store }: AppProps) {
   const isReady = useSyncExternalStore(
     store.subscribeToThrowAvailability,
@@ -107,6 +173,11 @@ export function App({ store }: AppProps) {
     store.subscribeToGearShop,
     store.getGearShop,
     store.getGearShop,
+  );
+  const autoThrowerOffer = useSyncExternalStore(
+    store.subscribeToAutoThrowerOffer,
+    store.getAutoThrowerOffer,
+    store.getAutoThrowerOffer,
   );
 
   return (
@@ -140,6 +211,8 @@ export function App({ store }: AppProps) {
       </section>
 
       <GearShop shop={shop} store={store} />
+
+      <KitShop offer={autoThrowerOffer} store={store} />
 
       <p className="footnote">Throw again when the yoyo returns to your hand.</p>
     </main>

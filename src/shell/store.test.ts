@@ -190,5 +190,67 @@ describe("the Gear shop", () => {
     store.throwYoyo();
     expect(store.getState()).toMatchObject({ phase: "Sleeping", spin: 120 });
   });
+});
 
+describe("the Kit shop", () => {
+  it("sells the opening Auto-Thrower on what the same eight-hour night would earn", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+    const advanceClock = (milliseconds: number) => {
+      now += milliseconds;
+    };
+
+    expect(store.getAutoThrowerOffer()).toEqual({
+      price: 250,
+      affordable: false,
+      owned: false,
+    });
+    const openingProjection = store.getProjectedNight();
+    expect(openingProjection).toEqual({
+      hours: 8,
+      withAutoThrower: expect.closeTo(9_000, 10),
+      withoutAutoThrower: expect.closeTo(2.5, 10),
+    });
+
+    completeThrowCycles(store, advanceClock, 4);
+    store.buyGear("throwPower");
+    store.throwYoyo();
+
+    const upgradedProjection = store.getProjectedNight();
+    expect(upgradedProjection.withAutoThrower).toBeGreaterThan(
+      openingProjection.withAutoThrower,
+    );
+    expect(upgradedProjection.withoutAutoThrower).toBeGreaterThan(
+      openingProjection.withoutAutoThrower,
+    );
+  });
+
+  it("buys the Auto-Thrower once and keeps Throw Cycles turning without the player", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+    const advanceClock = (milliseconds: number) => {
+      now += milliseconds;
+    };
+
+    completeThrowCycles(store, advanceClock, 100);
+    expect(store.getState()).toMatchObject({ phase: "Ready", style: 250 });
+    expect(store.getAutoThrowerOffer().affordable).toBe(true);
+
+    store.buyAutoThrower();
+
+    expect(store.getState()).toMatchObject({ hasAutoThrower: true, style: 0 });
+    expect(store.getAutoThrowerOffer()).toEqual({
+      price: 250,
+      affordable: false,
+      owned: true,
+    });
+
+    const bought = store.getState();
+    store.buyAutoThrower();
+    expect(store.getState()).toBe(bought);
+
+    advanceClock(8_000);
+    store.tick();
+    expect(store.getState()).toMatchObject({ phase: "Sleeping", spin: 100, style: 2.5 });
+  });
 });

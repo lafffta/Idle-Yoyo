@@ -1,7 +1,9 @@
 import type { GameState } from "../core/simulation.js";
 import {
   advance,
+  autoThrowerCost,
   bearingCost,
+  buyAutoThrower as buyAutoThrowerInCore,
   buyBearing,
   buyRewindSpeed,
   buyThrowPower,
@@ -15,6 +17,21 @@ import {
 type GameStoreOptions = {
   /** Milliseconds from the device wall clock. Injected so elapsed time is testable. */
   now: () => number;
+};
+
+/** Product assumption: the shop's projected night is eight hours away. */
+const PROJECTED_NIGHT_SECONDS = 8 * 60 * 60;
+
+export type AutoThrowerOffer = {
+  price: number;
+  affordable: boolean;
+  owned: boolean;
+};
+
+export type ProjectedNight = {
+  hours: number;
+  withAutoThrower: number;
+  withoutAutoThrower: number;
 };
 
 export type GearId = "throwPower" | "bearing" | "rewindSpeed";
@@ -63,8 +80,41 @@ function gearShop(state: GameState): GearShop {
   };
 }
 
+function autoThrowerOffer(state: GameState): AutoThrowerOffer {
+  const price = autoThrowerCost();
+  return {
+    price,
+    affordable: !state.hasAutoThrower && state.style >= price,
+    owned: state.hasAutoThrower,
+  };
+}
+
+function projectedNight(state: GameState): ProjectedNight {
+  const withoutAutoThrower = {
+    ...state,
+    style: 0,
+    lifetimeStyle: 0,
+    hasAutoThrower: false,
+  };
+  const bought = buyAutoThrowerInCore({
+    ...withoutAutoThrower,
+    style: autoThrowerCost(),
+  });
+  const withAutoThrower = { ...bought, style: 0, lifetimeStyle: 0 };
+
+  return {
+    hours: PROJECTED_NIGHT_SECONDS / (60 * 60),
+    withAutoThrower: advance(withAutoThrower, PROJECTED_NIGHT_SECONDS).style,
+    withoutAutoThrower: advance(withoutAutoThrower, PROJECTED_NIGHT_SECONDS).style,
+  };
+}
+
 export type GameStore = {
   getState: () => GameState;
+  getAutoThrowerOffer: () => AutoThrowerOffer;
+  getProjectedNight: () => ProjectedNight;
+  subscribeToAutoThrowerOffer: (listener: () => void) => () => void;
+  buyAutoThrower: () => void;
   getGearShop: () => GearShop;
   subscribeToGearShop: (listener: () => void) => () => void;
   buyGear: (gear: GearId) => void;
@@ -83,7 +133,9 @@ export function createGameStore({ now }: GameStoreOptions): GameStore {
   let lastTick = now();
   const throwAvailabilityListeners = new Set<() => void>();
   const gearShopListeners = new Set<() => void>();
+  const autoThrowerOfferListeners = new Set<() => void>();
   let currentGearShop = gearShop(state);
+  let currentAutoThrowerOffer = autoThrowerOffer(state);
 
   const sameGearShop = (nextShop: GearShop) =>
     currentGearShop.sustainedStyle === nextShop.sustainedStyle &&
@@ -102,6 +154,11 @@ export function createGameStore({ now }: GameStoreOptions): GameStore {
     const availabilityChanged = (state.phase === "Ready") !== (nextState.phase === "Ready");
     const nextGearShop = gearShop(nextState);
     const shopChanged = !sameGearShop(nextGearShop);
+    const nextAutoThrowerOffer = autoThrowerOffer(nextState);
+    const autoThrowerOfferChanged =
+      currentAutoThrowerOffer.price !== nextAutoThrowerOffer.price ||
+      currentAutoThrowerOffer.affordable !== nextAutoThrowerOffer.affordable ||
+      currentAutoThrowerOffer.owned !== nextAutoThrowerOffer.owned;
     state = nextState;
     if (availabilityChanged) {
       for (const listener of throwAvailabilityListeners) listener();
@@ -110,10 +167,21 @@ export function createGameStore({ now }: GameStoreOptions): GameStore {
       currentGearShop = nextGearShop;
       for (const listener of gearShopListeners) listener();
     }
+    if (autoThrowerOfferChanged) {
+      currentAutoThrowerOffer = nextAutoThrowerOffer;
+      for (const listener of autoThrowerOfferListeners) listener();
+    }
   };
 
   return {
     getState: () => state,
+    getAutoThrowerOffer: () => currentAutoThrowerOffer,
+    getProjectedNight: () => projectedNight(state),
+    subscribeToAutoThrowerOffer: (listener) => {
+      autoThrowerOfferListeners.add(listener);
+      return () => autoThrowerOfferListeners.delete(listener);
+    },
+    buyAutoThrower: () => replaceState(buyAutoThrowerInCore(state)),
     getGearShop: () => currentGearShop,
     subscribeToGearShop: (listener) => {
       gearShopListeners.add(listener);
