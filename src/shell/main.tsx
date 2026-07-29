@@ -3,8 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./app.js";
 import {
-  deserializeSave,
-  SAVE_KEY,
+  loadSave,
   startSaving,
   type SaveHost,
 } from "./save.js";
@@ -15,7 +14,8 @@ const root = document.querySelector<HTMLElement>("#root");
 
 if (!root) throw new Error("Idle Yoyo could not find its page root.");
 
-const saved = deserializeSave(window.localStorage.getItem(SAVE_KEY));
+const loaded = loadSave({ storage: window.localStorage, now: Date.now });
+const saved = loaded.saved;
 
 // The live GameState and the save lifecycle stay outside React (ADRs 0008 and 0011).
 const store = createGameStore({
@@ -44,6 +44,6 @@ startSaving({
 
 createRoot(root).render(
   <StrictMode>
-    <App store={store} />
+    <App store={store} saveWasUnreadable={loaded.status === "unreadable"} />
   </StrictMode>,
 );

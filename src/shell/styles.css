@@ -64,6 +64,24 @@ body::before {
   letter-spacing: 0;
 }
 
+.save-warning {
+  justify-self: center;
+  display: grid;
+  gap: 0.35rem;
+  width: min(100%, 68rem);
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(222, 118, 75, 0.45);
+  border-radius: 0.35rem;
+  color: #c9c2b2;
+  background: rgba(74, 39, 28, 0.72);
+  font-size: 0.8rem;
+}
+
+.save-warning strong {
+  color: #f4f0e6;
+  font-size: 0.85rem;
+}
+
 .game-stage {
   align-self: center;
   justify-self: center;

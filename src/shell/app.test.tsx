@@ -23,6 +23,20 @@ describe("the Throw control", () => {
   });
 });
 
+describe("an unreadable save", () => {
+  it("plainly tells the player a fresh game started and their original was kept", () => {
+    const store = createGameStore({ now: () => 0 });
+
+    const warned = renderToStaticMarkup(<App store={store} saveWasUnreadable />);
+    expect(warned).toContain("We couldn&#x27;t read your save.");
+    expect(warned).toContain("A fresh game was started");
+    expect(warned).toContain("the original save was kept safely on this device");
+
+    const ordinaryNewGame = renderToStaticMarkup(<App store={store} />);
+    expect(ordinaryNewGame).not.toContain("We couldn&#x27;t read your save.");
+  });
+});
+
 describe("the Gear shop", () => {
   it("leads with Sustained Style and keeps every unaffordable Gear row visible", () => {
     const store = createGameStore({ now: () => 0 });
