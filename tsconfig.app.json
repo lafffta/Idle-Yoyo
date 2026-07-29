@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Browser types exist only in this half of the split (ADR 0012). The core and tuning
+    // harness are still checked by tsconfig.json, where document and window do not exist.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "jsx": "react-jsx",
+    "noEmit": true
+  },
+  "include": ["src/shell"]
+}

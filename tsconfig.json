@@ -3,11 +3,9 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    // No DOM lib. ADR 0008 requires the simulation core to have no DOM access, and this is
-    // what makes that a compile error rather than a convention: `document` and `window`
-    // are simply not there. Node's types are here for the test runner and for the
-    // architecture guard in src/core/core-is-pure.test.ts, which reads the core's own
-    // source and is what keeps a wall clock out of it.
+    // No DOM lib. ADRs 0008 and 0012 require the core and tuning harness to have no DOM
+    // access, and this is what makes that a compile error rather than a convention.
+    // The shell is checked separately by tsconfig.app.json, which adds browser types.
     "lib": ["ES2022"],
     "types": ["node"],
     "strict": true,
@@ -21,5 +19,5 @@
     "declaration": true,
     "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["src/core", "src/tuning"]
 }
