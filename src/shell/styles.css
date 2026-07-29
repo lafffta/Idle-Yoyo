@@ -82,6 +82,46 @@ body::before {
   font-size: 0.85rem;
 }
 
+.absence-summary {
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  width: min(100%, 68rem);
+  padding: 1rem 1.15rem;
+  border: 1px solid rgba(222, 118, 75, 0.32);
+  border-radius: 0.35rem;
+  background:
+    linear-gradient(120deg, rgba(222, 118, 75, 0.08), transparent 55%),
+    rgba(35, 33, 28, 0.76);
+}
+
+.absence-summary .eyebrow {
+  margin-bottom: 0.35rem;
+}
+
+.absence-summary h2 {
+  color: #f4f0e6;
+  font-size: clamp(1rem, 2vw, 1.3rem);
+  font-weight: 500;
+}
+
+.absence-summary div > p:last-child {
+  max-width: 52rem;
+  margin: 0.5rem 0 0;
+  color: #b8b0a1;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.absence-summary .action-button {
+  flex: none;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+}
+
 .game-stage {
   align-self: center;
   justify-self: center;
@@ -502,6 +542,11 @@ h1 {
 
   .style-card {
     padding: 3rem 1.25rem;
+  }
+
+  .absence-summary {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .gear-row {

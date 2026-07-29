@@ -13,6 +13,7 @@ import {
   throwPowerCost,
   throwYoyo,
 } from "../core/simulation.js";
+import { PROVISIONAL_SHELL } from "./constants.js";
 
 export type GameCheckpoint = {
   tickedAt: number;
@@ -26,9 +27,6 @@ type GameStoreOptions = {
   restored?: GameCheckpoint;
 };
 
-/** Product assumption: the shop's projected night is eight hours away. */
-const PROJECTED_NIGHT_SECONDS = 8 * 60 * 60;
-
 export type AutoThrowerOffer = {
   price: number;
   affordable: boolean;
@@ -39,6 +37,12 @@ export type ProjectedNight = {
   hours: number;
   withAutoThrower: number;
   withoutAutoThrower: number;
+};
+
+export type AbsenceSummary = {
+  seconds: number;
+  styleEarned: number;
+  outcome: "autoThrower" | "died" | "alreadyDead" | "stillSleeping";
 };
 
 export type GearId = "throwPower" | "bearing" | "rewindSpeed";
@@ -110,15 +114,18 @@ function projectedNight(state: GameState): ProjectedNight {
   const withAutoThrower = { ...bought, style: 0, lifetimeStyle: 0 };
 
   return {
-    hours: PROJECTED_NIGHT_SECONDS / (60 * 60),
-    withAutoThrower: advance(withAutoThrower, PROJECTED_NIGHT_SECONDS).style,
-    withoutAutoThrower: advance(withoutAutoThrower, PROJECTED_NIGHT_SECONDS).style,
+    hours: PROVISIONAL_SHELL.projectedNightSeconds / (60 * 60),
+    withAutoThrower: advance(withAutoThrower, PROVISIONAL_SHELL.projectedNightSeconds).style,
+    withoutAutoThrower: advance(withoutAutoThrower, PROVISIONAL_SHELL.projectedNightSeconds).style,
   };
 }
 
 export type GameStore = {
   getState: () => GameState;
   checkpoint: () => GameCheckpoint;
+  getAbsenceSummary: () => AbsenceSummary | null;
+  subscribeToAbsenceSummary: (listener: () => void) => () => void;
+  dismissAbsenceSummary: () => void;
   subscribeToPurchases: (listener: () => void) => () => void;
   getAutoThrowerOffer: () => AutoThrowerOffer;
   getProjectedNight: () => ProjectedNight;
@@ -140,6 +147,9 @@ export type GameStore = {
 export function createGameStore({ now, restored }: GameStoreOptions): GameStore {
   let state = restored?.state ?? throwYoyo(initialState());
   let lastTick = restored?.tickedAt ?? now();
+  let absenceSummary: AbsenceSummary | null = null;
+  let hasPendingRestorationTick = restored !== undefined;
+  const absenceSummaryListeners = new Set<() => void>();
   const throwAvailabilityListeners = new Set<() => void>();
   const purchaseListeners = new Set<() => void>();
   const gearShopListeners = new Set<() => void>();
@@ -190,7 +200,29 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
   };
 
   const tickAt = (tickedAt: number) => {
-    replaceState(advance(state, (tickedAt - lastTick) / 1_000));
+    const seconds = Math.max(0, (tickedAt - lastTick) / 1_000);
+    const styleBeforeTick = state.style;
+    const hadAutoThrower = state.hasAutoThrower;
+    const phaseBeforeTick = state.phase;
+    replaceState(advance(state, seconds));
+    if (hasPendingRestorationTick) {
+      if (seconds >= PROVISIONAL_SHELL.meaningfulRestoredAbsenceSeconds) {
+        const outcome = hadAutoThrower
+          ? "autoThrower"
+          : phaseBeforeTick !== "Sleeping"
+            ? "alreadyDead"
+            : state.phase === "Sleeping"
+              ? "stillSleeping"
+              : "died";
+        absenceSummary = {
+          seconds,
+          styleEarned: state.style - styleBeforeTick,
+          outcome,
+        };
+        for (const listener of absenceSummaryListeners) listener();
+      }
+      hasPendingRestorationTick = false;
+    }
     lastTick = tickedAt;
   };
 
@@ -200,6 +232,16 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
       const tickedAt = now();
       tickAt(tickedAt);
       return { tickedAt, state };
+    },
+    getAbsenceSummary: () => absenceSummary,
+    subscribeToAbsenceSummary: (listener) => {
+      absenceSummaryListeners.add(listener);
+      return () => absenceSummaryListeners.delete(listener);
+    },
+    dismissAbsenceSummary: () => {
+      if (absenceSummary === null) return;
+      absenceSummary = null;
+      for (const listener of absenceSummaryListeners) listener();
     },
     subscribeToPurchases: (listener) => {
       purchaseListeners.add(listener);

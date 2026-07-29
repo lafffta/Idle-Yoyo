@@ -7,7 +7,11 @@ import {
   throwYoyo,
 } from "../core/simulation.js";
 import { createGameStore } from "./store.js";
-import { completeThrowCycles } from "./test-helpers.js";
+import {
+  completeThrowCycles,
+  restoreAfterAbsence,
+  sleeperWithAutoThrower,
+} from "./test-helpers.js";
 
 describe("the shell clock", () => {
   it("advances a freshly Thrown yoyo by elapsed wall-clock time", () => {
@@ -65,6 +69,55 @@ describe("the shell clock", () => {
 
     expect(store.getState()).toMatchObject({ phase: "Sleeping", spin: 100 });
     expect(store.getState().style).toBeCloseTo(9_000, 10);
+  });
+});
+
+describe("returning from an Absence", () => {
+  it("reports the duration and Style produced by the ordinary restored tick", () => {
+    const state = sleeperWithAutoThrower();
+    const store = restoreAfterAbsence(state, 8 * 60 * 60);
+
+    expect(store.getAbsenceSummary()).toEqual({
+      seconds: 8 * 60 * 60,
+      styleEarned: 9_000,
+      outcome: "autoThrower",
+    });
+    expect(store.getAbsenceSummary()?.styleEarned).toBeCloseTo(
+      store.getState().style - state.style,
+      10,
+    );
+  });
+
+  it("keeps a trivial reload silent instead of reporting a later Session tick", () => {
+    let now = 5_000;
+    const state = throwYoyo(initialState());
+    const store = createGameStore({
+      now: () => now,
+      restored: { tickedAt: 1_000, state },
+    });
+
+    store.tick();
+    expect(store.getAbsenceSummary()).toBeNull();
+
+    now += 8 * 60 * 60 * 1_000;
+    store.tick();
+    expect(store.getAbsenceSummary()).toBeNull();
+  });
+
+  it("dismisses the return summary without blocking later ticks", () => {
+    let now = 8 * 60 * 60 * 1_000;
+    const store = createGameStore({
+      now: () => now,
+      restored: { tickedAt: 0, state: throwYoyo(initialState()) },
+    });
+    store.tick();
+    expect(store.getAbsenceSummary()).not.toBeNull();
+
+    store.dismissAbsenceSummary();
+    now += 1_000;
+    store.tick();
+
+    expect(store.getAbsenceSummary()).toBeNull();
   });
 });
 
