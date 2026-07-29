@@ -75,3 +75,46 @@ describe("the Gear shop", () => {
     expect(bought).toMatch(/<button[^>]*disabled=""[^>]*>Buy Throw Power<\/button>/);
   });
 });
+
+describe("the Kit shop", () => {
+  it("presents the Auto-Thrower separately through an eight-hour night projection", () => {
+    const store = createGameStore({ now: () => 0 });
+
+    const markup = renderToStaticMarkup(<App store={store} />);
+    const kit = markup.match(
+      /<section[^>]*aria-label="Kit"[^>]*>[\s\S]*?<\/section>/,
+    )?.[0];
+
+    expect(kit).toBeDefined();
+    expect(kit).toContain("Kit");
+    expect(kit).toMatch(/<h3[^>]*>Auto-Thrower<\/h3>/);
+    expect(kit).toContain("Projected 8-hour night");
+    expect(kit).toContain("With Auto-Thrower");
+    expect(kit).toContain("9,000 Style");
+    expect(kit).toContain("Without Auto-Thrower");
+    expect(kit).toContain("2.5 Style");
+    expect(kit).toContain("250 Style");
+    expect(kit).toMatch(/<button[^>]*disabled=""[^>]*>Buy Auto-Thrower<\/button>/);
+    expect(kit).not.toContain("Sustained Style");
+  });
+
+  it("marks the one-time Auto-Thrower purchase as owned", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+    const advanceClock = (milliseconds: number) => {
+      now += milliseconds;
+    };
+
+    completeThrowCycles(store, advanceClock, 100);
+    const affordable = renderToStaticMarkup(<App store={store} />);
+    expect(affordable).toMatch(
+      /<button(?![^>]*disabled)[^>]*>Buy Auto-Thrower<\/button>/,
+    );
+
+    store.buyAutoThrower();
+
+    const owned = renderToStaticMarkup(<App store={store} />);
+    expect(owned).toMatch(/<button[^>]*disabled=""[^>]*>Owned<\/button>/);
+    expect(owned).not.toContain("Buy Auto-Thrower");
+  });
+});
