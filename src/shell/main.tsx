@@ -22,7 +22,13 @@ const store = createGameStore({
   now: Date.now,
   ...(saved === null
     ? {}
-    : { restored: { tickedAt: saved.savedAt, state: saved.state } }),
+    : {
+        restored: {
+          tickedAt: saved.savedAt,
+          state: saved.state,
+          sustainedStyleGuideWasDismissed: saved.sustainedStyleGuideWasDismissed,
+        },
+      }),
 });
 // Resolve a restored Absence through the ordinary tick before the first player-visible render.
 store.tick();

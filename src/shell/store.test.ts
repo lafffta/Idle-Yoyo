@@ -121,6 +121,19 @@ describe("returning from an Absence", () => {
   });
 });
 
+describe("the Sustained Style guide", () => {
+  it("is visible for a new player and stays dismissed for the Session", () => {
+    const store = createGameStore({ now: () => 0 });
+
+    expect(store.isSustainedStyleGuideVisible()).toBe(true);
+
+    store.dismissSustainedStyleGuide();
+    store.tick();
+
+    expect(store.isSustainedStyleGuideVisible()).toBe(false);
+  });
+});
+
 describe("a player Throw", () => {
   it("starts a full-Throw-Power Sleeper when the yoyo is back in hand", () => {
     let now = 0;

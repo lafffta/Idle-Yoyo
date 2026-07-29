@@ -18,13 +18,20 @@ import { PROVISIONAL_SHELL } from "./constants.js";
 export type GameCheckpoint = {
   tickedAt: number;
   state: GameState;
+  sustainedStyleGuideWasDismissed: boolean;
+};
+
+type RestoredGame = {
+  tickedAt: number;
+  state: GameState;
+  sustainedStyleGuideWasDismissed?: boolean;
 };
 
 type GameStoreOptions = {
   /** Milliseconds from the device wall clock. Injected so elapsed time is testable. */
   now: () => number;
   /** A restored state and the wall-clock instant from which its next ordinary tick continues. */
-  restored?: GameCheckpoint;
+  restored?: RestoredGame;
 };
 
 export type AutoThrowerOffer = {
@@ -126,7 +133,10 @@ export type GameStore = {
   getAbsenceSummary: () => AbsenceSummary | null;
   subscribeToAbsenceSummary: (listener: () => void) => () => void;
   dismissAbsenceSummary: () => void;
-  subscribeToPurchases: (listener: () => void) => () => void;
+  isSustainedStyleGuideVisible: () => boolean;
+  subscribeToSustainedStyleGuide: (listener: () => void) => () => void;
+  dismissSustainedStyleGuide: () => void;
+  subscribeToPersistedChanges: (listener: () => void) => () => void;
   getAutoThrowerOffer: () => AutoThrowerOffer;
   getProjectedNight: () => ProjectedNight;
   subscribeToAutoThrowerOffer: (listener: () => void) => () => void;
@@ -149,9 +159,11 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
   let lastTick = restored?.tickedAt ?? now();
   let absenceSummary: AbsenceSummary | null = null;
   let hasPendingRestorationTick = restored !== undefined;
+  let sustainedStyleGuideWasDismissed = restored?.sustainedStyleGuideWasDismissed ?? false;
   const absenceSummaryListeners = new Set<() => void>();
+  const sustainedStyleGuideListeners = new Set<() => void>();
   const throwAvailabilityListeners = new Set<() => void>();
-  const purchaseListeners = new Set<() => void>();
+  const persistedChangeListeners = new Set<() => void>();
   const gearShopListeners = new Set<() => void>();
   const autoThrowerOfferListeners = new Set<() => void>();
   let currentGearShop = gearShop(state);
@@ -196,7 +208,7 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
   const purchase = (nextState: GameState) => {
     if (nextState === state) return;
     replaceState(nextState);
-    for (const listener of purchaseListeners) listener();
+    for (const listener of persistedChangeListeners) listener();
   };
 
   const tickAt = (tickedAt: number) => {
@@ -231,7 +243,7 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
     checkpoint: () => {
       const tickedAt = now();
       tickAt(tickedAt);
-      return { tickedAt, state };
+      return { tickedAt, state, sustainedStyleGuideWasDismissed };
     },
     getAbsenceSummary: () => absenceSummary,
     subscribeToAbsenceSummary: (listener) => {
@@ -243,9 +255,20 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
       absenceSummary = null;
       for (const listener of absenceSummaryListeners) listener();
     },
-    subscribeToPurchases: (listener) => {
-      purchaseListeners.add(listener);
-      return () => purchaseListeners.delete(listener);
+    isSustainedStyleGuideVisible: () => !sustainedStyleGuideWasDismissed,
+    subscribeToSustainedStyleGuide: (listener) => {
+      sustainedStyleGuideListeners.add(listener);
+      return () => sustainedStyleGuideListeners.delete(listener);
+    },
+    dismissSustainedStyleGuide: () => {
+      if (sustainedStyleGuideWasDismissed) return;
+      sustainedStyleGuideWasDismissed = true;
+      for (const listener of sustainedStyleGuideListeners) listener();
+      for (const listener of persistedChangeListeners) listener();
+    },
+    subscribeToPersistedChanges: (listener) => {
+      persistedChangeListeners.add(listener);
+      return () => persistedChangeListeners.delete(listener);
     },
     getAutoThrowerOffer: () => currentAutoThrowerOffer,
     getProjectedNight: () => projectedNight(state),

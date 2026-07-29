@@ -29,6 +29,75 @@ function UnreadableSaveWarning() {
   );
 }
 
+function SustainedStyleGuide({ store }: AppProps) {
+  const isVisible = useSyncExternalStore(
+    store.subscribeToSustainedStyleGuide,
+    store.isSustainedStyleGuideVisible,
+    store.isSustainedStyleGuideVisible,
+  );
+
+  if (!isVisible) return null;
+
+  return (
+    <section className="style-guide" aria-label="Understanding Sustained Style">
+      <div className="style-guide-copy">
+        <p className="eyebrow">Your first Throw Cycle</p>
+        <h2>Why Sustained Style holds still</h2>
+        <p>
+          As the yoyo slows, the live Style rate falls with its Spin. Sustained Style is the
+          average across the whole Throw Cycle, so it stays useful when you compare Gear.
+        </p>
+      </div>
+
+      <figure className="style-guide-figure">
+        <svg
+          className="style-guide-chart"
+          viewBox="0 0 366 190"
+          role="img"
+          aria-labelledby="style-guide-chart-title style-guide-chart-description"
+        >
+          <title id="style-guide-chart-title">
+            Live Style rate falls through a Throw Cycle while Sustained Style stays level
+          </title>
+          <desc id="style-guide-chart-description">
+            The live Style rate slopes down to zero during the Sleeper and remains at zero during
+            Rewind. The Sustained Style average is one level line across both phases.
+          </desc>
+          <rect className="style-guide-sleeper" x="32" y="22" width="213" height="124" />
+          <rect className="style-guide-rewind" x="245" y="22" width="89" height="124" />
+          <line className="style-guide-axis" x1="32" y1="146" x2="334" y2="146" />
+          <polyline className="style-guide-live-rate" points="32,34 245,146 334,146" />
+          <line className="style-guide-average" x1="32" y1="107" x2="334" y2="107" />
+          <text className="style-guide-live-label" x="42" y="42">
+            Live Style rate
+          </text>
+          <text className="style-guide-average-label" x="168" y="99">
+            Sustained Style average
+          </text>
+          <text className="style-guide-phase-label" x="118" y="167">
+            Sleeper
+          </text>
+          <text className="style-guide-phase-label" x="262" y="167">
+            Rewind
+          </text>
+        </svg>
+        <figcaption>
+          Rewind earns no Style. The average does not dip during Rewind because it already includes
+          that quiet part of every Throw Cycle.
+        </figcaption>
+      </figure>
+
+      <button
+        className="action-button"
+        type="button"
+        onClick={store.dismissSustainedStyleGuide}
+      >
+        Got it
+      </button>
+    </section>
+  );
+}
+
 function formatAbsenceDuration(seconds: number): string {
   const minutes = Math.round(seconds / 60);
   const hours = Math.floor(minutes / 60);
@@ -255,6 +324,8 @@ export function App({ store, saveWasUnreadable = false }: AppProps) {
       </header>
 
       {saveWasUnreadable ? <UnreadableSaveWarning /> : null}
+
+      <SustainedStyleGuide store={store} />
 
       <AbsenceSummary store={store} />
 

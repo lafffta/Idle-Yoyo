@@ -9,6 +9,8 @@ const SAVE_INTERVAL_MILLISECONDS = 30_000;
 export type SaveDocument = {
   savedAt: number;
   state: GameState;
+  /** Missing in saves created before the first-run guide existed; missing means not dismissed. */
+  sustainedStyleGuideWasDismissed?: boolean;
 };
 
 export function serializeSave(saved: SaveDocument): string {
@@ -57,7 +59,9 @@ export function deserializeSave(serialized: string | null): SaveDocument | null 
   if (
     !isRecord(migrated) ||
     !isFiniteNumber(migrated.savedAt) ||
-    !isGameState(migrated.state)
+    !isGameState(migrated.state) ||
+    (migrated.sustainedStyleGuideWasDismissed !== undefined &&
+      typeof migrated.sustainedStyleGuideWasDismissed !== "boolean")
   ) {
     throw new Error("The saved game document is not a supported version.");
   }
@@ -113,11 +117,15 @@ export function startSaving({ store, storage, host }: StartSavingOptions): () =>
     const checkpoint = store.checkpoint();
     storage.setItem(
       SAVE_KEY,
-      serializeSave({ savedAt: checkpoint.tickedAt, state: checkpoint.state }),
+      serializeSave({
+        savedAt: checkpoint.tickedAt,
+        state: checkpoint.state,
+        sustainedStyleGuideWasDismissed: checkpoint.sustainedStyleGuideWasDismissed,
+      }),
     );
   };
 
-  const stopPurchases = store.subscribeToPurchases(write);
+  const stopPersistedChanges = store.subscribeToPersistedChanges(write);
   const stopVisibility = host.onVisibilityChange(() => {
     if (!host.isVisible()) write();
   });
@@ -126,7 +134,7 @@ export function startSaving({ store, storage, host }: StartSavingOptions): () =>
   });
 
   return () => {
-    stopPurchases();
+    stopPersistedChanges();
     stopVisibility();
     stopInterval();
   };
