@@ -16,6 +16,7 @@ import {
   nextTrick,
   previewAttempt,
   projectedYield,
+  rewindDuration,
   rewindSpeedCost,
   sustainedStyle,
   throwPowerCost,
@@ -1373,6 +1374,114 @@ describe("chaining Man on the Flying Trapeze onto a landed Rock the Baby", () =>
     expect(sustainedStyle(shopping)).toBeGreaterThan(sustainedStyle(doomed));
     expect(advance(shopping, 1.375).phase).toBe("Rewinding");
     expect(advance(shopping, 1.375).landedTricks).toEqual(["rock-the-baby"]);
+  });
+});
+
+/**
+ * #69: Brain Twister completes the 1A Division. Nothing about offering, chaining, resolving or
+ * compounding it is new — #67 and #68 already wrote `nextTrick`, `attemptTrick`, `previewAttempt`
+ * and `advance` generically over the whole `TRICKS_1A` ladder — so what follows is proof of that
+ * for the third row specifically, at its own duration and drain, rather than new machinery.
+ */
+describe("completing the ladder with Brain Twister", () => {
+  /**
+   * Rock the Baby and Man on the Flying Trapeze landed on one Sleeper, with `throwPowerLevels`
+   * of Throw Power bought beforehand. Five levels (the default) leaves exactly the 55 Spin the
+   * chaining tests above land both rows on; fifteen leaves enough for Brain Twister as well.
+   */
+  function landedRockAndTrapeze(throwPowerLevels = 5): GameState {
+    const geared = throwYoyo(afterBuyingThrowPower(throwPowerLevels));
+    const rockedTheBaby = advance(attemptTrick(geared), 1.5);
+    return advance(attemptTrick(rockedTheBaby), 2.5);
+  }
+
+  it("is out of reach on the Spin the first two Tricks leave, and kills the yoyo rather than landing", () => {
+    const bothLanded = landedRockAndTrapeze();
+
+    expect(bothLanded.spin).toBeCloseTo(55, 10);
+    // Brain Twister drains at 50 Spin a second; 55 Spin survives 1.1s of its 4.
+    expect(previewAttempt(bothLanded)?.outcome).toEqual({ lands: false, secondsUntilDeath: 1.1 });
+
+    const attempted = advance(attemptTrick(bothLanded), 4);
+    expect(attempted.landedTricks).toEqual(["rock-the-baby", "man-on-the-flying-trapeze"]);
+    expect(attempted.phase).toBe("Rewinding");
+  });
+
+  it("leaves itself on the ladder to be Attempted again once a later Sleeper is thrown", () => {
+    const failed = advance(attemptTrick(landedRockAndTrapeze()), 4);
+    const woundAndThrown = throwYoyo(advance(failed, rewindDuration(failed)));
+
+    expect(nextTrick(woundAndThrown)?.name).toBe("Brain Twister");
+    expect(previewAttempt(woundAndThrown)?.outcome.lands).toBe(false);
+  });
+
+  /**
+   * A Throw strong enough to survive all three costs in one Sleeper: 400 Spin against 45, 100
+   * and 200, in that order, leaving 55 to spare — the same margin Rock the Baby and Man on the
+   * Flying Trapeze leave each other, extended one row further.
+   */
+  it("lands on a strong enough Throw, completing the Division and compounding all three rewards", () => {
+    const before = sustainedStyle(throwYoyo(afterBuyingThrowPower(15)));
+    const bothLanded = landedRockAndTrapeze(15);
+    expect(previewAttempt(bothLanded)?.outcome).toEqual({ lands: true, spinOnLanding: 55 });
+
+    const allLanded = advance(attemptTrick(bothLanded), 4);
+
+    expect(allLanded.landedTricks).toEqual([
+      "rock-the-baby",
+      "man-on-the-flying-trapeze",
+      "brain-twister",
+    ]);
+    expect(allLanded.phase).toBe("Sleeping");
+    expect(allLanded.spin).toBeCloseTo(55, 10);
+    expect(sustainedStyle(allLanded)).toBeCloseTo(before * 1.25 * 1.5 * 2, 10);
+
+    // Nothing left to offer: the ladder is finished, not merely quiet between rows.
+    expect(nextTrick(allLanded)).toBe(null);
+    expect(previewAttempt(allLanded)).toBe(null);
+    expect(attemptTrick(allLanded)).toEqual(allLanded);
+  });
+
+  it("runs its Attempt over its own 4-second duration, not one borrowed from an earlier row", () => {
+    const startingBrainTwister = attemptTrick(landedRockAndTrapeze(15));
+
+    expect(activeAttempt(startingBrainTwister)?.trick.name).toBe("Brain Twister");
+    expect(activeAttempt(startingBrainTwister)?.progress).toBeCloseTo(0, 10);
+    expect(activeAttempt(advance(startingBrainTwister, 2))?.progress).toBeCloseTo(0.5, 10);
+    expect(activeAttempt(advance(startingBrainTwister, 3.9999))?.progress).toBeCloseTo(1, 3);
+  });
+
+  /**
+   * The same parity ADR 0002 asks of the core generally, carried across a fatal Brain Twister:
+   * the Attempt's death, the ordinary Rewind, and an automatic re-Throw are three boundaries in
+   * one delta, and a player who is not watching gets exactly what one who is watching would see.
+   */
+  it("carries a fatal Attempt through the Rewind and back into an automatic Throw, however the time is split", () => {
+    const gearedAndAutomatic = throwYoyo(afterShopping([buyThrowPower, 5], [buyAutoThrower, 1]));
+    const rockedTheBaby = advance(attemptTrick(gearedAndAutomatic), 1.5);
+    const bothLanded = advance(attemptTrick(rockedTheBaby), 2.5);
+    const doomed = attemptTrick(bothLanded);
+
+    const inOneCall = advance(doomed, EIGHT_HOURS);
+
+    let inPieces = doomed;
+    for (const piece of unevenSplits(EIGHT_HOURS, 331)) inPieces = advance(inPieces, piece);
+
+    // Precision 6, not the usual 10: this is a sum over thousands of Throw Cycles across eight
+    // hours, and the earlier 8-hour comparisons in this file (see "records how much...") hold
+    // themselves to the same standard for the same reason.
+    expect(inPieces.style).toBeCloseTo(inOneCall.style, 6);
+    expect(inPieces.landedTricks).toEqual(inOneCall.landedTricks);
+    expect(inPieces.phase).toBe(inOneCall.phase);
+
+    // The gamble cost this Sleeper and nothing beyond it: every cycle since has run exactly as
+    // the undisturbed one below, and the two figures below are the same run to a rounding error.
+    const undisturbed = advance(bothLanded, EIGHT_HOURS);
+    expect(inOneCall.landedTricks).toEqual(["rock-the-baby", "man-on-the-flying-trapeze"]);
+    expect(inOneCall.attempt).toBe(null);
+    expect(inOneCall.phase).toBe("Sleeping");
+    expect(Math.abs(inOneCall.style - undisturbed.style)).toBeLessThan(19);
+    expect(inOneCall.style).toBeGreaterThan(sustainedStyle(bothLanded) * EIGHT_HOURS * 0.9);
   });
 });
 

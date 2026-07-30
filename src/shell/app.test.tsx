@@ -351,6 +351,94 @@ describe("the 1A Division", () => {
       /<output[^>]*aria-label="Sustained Style"[^>]*>1.44<\/output>/,
     );
   });
+
+  /**
+   * #69: Brain Twister completes the Division. A Throw strong enough to survive all three costs
+   * — 400 Spin against 45, 100 and 200 — carries every landing onto one Sleeper, same as #68's
+   * test does for the first two.
+   */
+  it("lands Brain Twister after the first two, completing the ladder with its own motion and no row left to act on", () => {
+    let now = 0;
+    const store = createGameStore({
+      now: () => now,
+      restored: { tickedAt: now, state: gearedFreshSleeper(15) },
+    });
+
+    store.attemptTrick();
+    now = 1_500;
+    store.tick();
+    store.attemptTrick();
+    now = 4_000;
+    store.tick();
+
+    // Between the second landing and the third: Brain Twister is the only actionable row.
+    const beforeBrainTwister = trickLadderMarkup(store);
+    expect(beforeBrainTwister.match(/<button/g)).toHaveLength(1);
+    expect(beforeBrainTwister).toMatch(
+      /<button(?![^>]*disabled)[^>]*>Attempt Brain Twister<\/button>/,
+    );
+
+    store.attemptTrick();
+    now = 4_500;
+    store.tick();
+    expect(renderToStaticMarkup(<App store={store} />)).toContain(
+      'aria-label="Brain Twister: an Attempt in progress on the Sleeper"',
+    );
+
+    now = 8_000;
+    store.tick();
+
+    const ladder = trickLadderMarkup(store);
+    expect(ladder.match(/Landed/g)).toHaveLength(3);
+    // Every row says Landed; nothing on the ladder is next any longer.
+    expect(ladder).not.toMatch(/<button/);
+
+    expect(renderToStaticMarkup(<App store={store} />)).toMatch(
+      /<output[^>]*aria-label="Sustained Style"[^>]*>6\.52<\/output>/,
+    );
+  });
+
+  /**
+   * The row a weak Throw cannot survive: Brain Twister costs 200 Spin and this Sleeper has 55,
+   * so Attempting it anyway kills the yoyo — and the row is exactly where it was afterwards,
+   * waiting for a Sleeper rather than lost.
+   */
+  it("kills the yoyo when Brain Twister is Attempted anyway, and leaves the row to try again on the next Sleeper", () => {
+    let now = 0;
+    const store = createGameStore({
+      now: () => now,
+      restored: { tickedAt: now, state: gearedFreshSleeper(5) },
+    });
+
+    store.attemptTrick();
+    now = 1_500;
+    store.tick();
+    store.attemptTrick();
+    now = 4_000;
+    store.tick();
+
+    store.attemptTrick();
+    // 55 Spin at Brain Twister's 50-a-second drain: dead 1.1s in, well inside its 4-second Attempt.
+    now = 5_100;
+    store.tick();
+
+    const ladder = trickLadderMarkup(store);
+    expect(ladder.match(/Landed/g)).toHaveLength(2);
+    expect(ladder).not.toContain("Land Brain Twister first");
+    expect(ladder).toMatch(/<button[^>]*disabled=""[^>]*>Attempt Brain Twister<\/button>/);
+    expect(ladder).toContain("Available while the yoyo is a Sleeper.");
+
+    // The ordinary Rewind, then a fresh Throw with no Auto-Thrower to do it automatically.
+    now = 5_100 + 3_000;
+    store.tick();
+    store.throwYoyo();
+
+    const freshLadder = trickLadderMarkup(store);
+    expect(freshLadder).not.toContain("Land Brain Twister first");
+    // Back to a fresh 200-Spin Throw: lands exactly on empty against a 200-Spin cost, which is
+    // a death rather than a landing — the boundary this file elsewhere calls "the exact second".
+    expect(freshLadder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
+  });
 });
 
 describe("the Kit shop", () => {
