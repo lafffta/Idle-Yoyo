@@ -1345,6 +1345,20 @@ describe("chaining Man on the Flying Trapeze onto a landed Rock the Baby", () =>
   });
 
   /**
+   * A landed Trick is a permanent completion record: the next commitment reaches past it for
+   * Brain Twister, and landing that does nothing to the record already made of the row before it.
+   */
+  it("cannot be Attempted again once landed", () => {
+    const geared = throwYoyo(afterBuyingThrowPower(5));
+    const bothLanded = advance(attemptTrick(advance(attemptTrick(geared), 1.5)), 2.5);
+
+    const committed = attemptTrick(bothLanded);
+
+    expect(committed.attempt).toEqual({ trickId: "brain-twister", remaining: 4 });
+    expect(committed.landedTricks).toEqual(["rock-the-baby", "man-on-the-flying-trapeze"]);
+  });
+
+  /**
    * ADR 0014 again, this time on the second row: an Attempt reads the decay the Throw captured,
    * so a Bearing bought after committing to it cannot rescue an Attempt already doomed by the
    * Spin the Throw was carrying when it began.

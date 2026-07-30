@@ -320,6 +320,14 @@ describe("the 1A Division", () => {
     store.attemptTrick();
     now = 1_500;
     store.tick();
+
+    // Between the two landings: Man on the Flying Trapeze is the only actionable row, and
+    // Brain Twister still explains what it is waiting on rather than offering an action.
+    const afterRockTheBaby = trickLadderMarkup(store);
+    expect(afterRockTheBaby).toContain("Land Man on the Flying Trapeze first");
+    expect(afterRockTheBaby).not.toContain("Land Rock the Baby first");
+    expect(afterRockTheBaby.match(/<button/g)).toHaveLength(1);
+
     store.attemptTrick();
 
     now = 2_500;
