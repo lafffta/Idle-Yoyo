@@ -1267,6 +1267,102 @@ describe("Attempting a Trick", () => {
 });
 
 /**
+ * #68: the second row becomes actionable the instant Rock the Baby lands, and the plan asks that
+ * a strong enough Throw can chain straight into it on the same Sleeper rather than waiting for
+ * the next one.
+ */
+describe("chaining Man on the Flying Trapeze onto a landed Rock the Baby", () => {
+  it("becomes the Trick on offer, with its own duration and reward, the instant Rock the Baby lands", () => {
+    const rockedTheBaby = advance(attemptTrick(freshSleeper()), 1.5);
+
+    const preview = previewAttempt(rockedTheBaby);
+
+    expect(preview?.trick.name).toBe("Man on the Flying Trapeze");
+    expect(preview?.trick.durationSeconds).toBe(2.5);
+    expect(preview?.trick.styleMultiplier).toBe(1.5);
+  });
+
+  /**
+   * The opening Throw's own 55 Spin is not enough: Man on the Flying Trapeze drains at 40 Spin a
+   * second for 2.5 seconds, a 100-Spin cost the plan expects to remain out of reach until Throw
+   * Power or the Bearing has moved. It is still offered, and still not refused (ADR 0004).
+   */
+  it("is out of reach on the Spin Rock the Baby itself leaves, and kills the yoyo rather than landing", () => {
+    const rockedTheBaby = advance(attemptTrick(freshSleeper()), 1.5);
+
+    expect(rockedTheBaby.spin).toBeCloseTo(55, 10);
+    expect(previewAttempt(rockedTheBaby)?.outcome).toEqual({
+      lands: false,
+      secondsUntilDeath: 1.375,
+    });
+
+    const attempted = advance(attemptTrick(rockedTheBaby), 2.5);
+    expect(attempted.landedTricks).toEqual(["rock-the-baby"]);
+    expect(attempted.phase).toBe("Rewinding");
+  });
+
+  it("lands within the same Sleeper once Throw Power leaves enough Spin to survive both", () => {
+    const geared = throwYoyo(afterBuyingThrowPower(5));
+
+    const rockedTheBaby = advance(attemptTrick(geared), 1.5);
+    expect(rockedTheBaby.spin).toBeCloseTo(155, 10);
+    expect(previewAttempt(rockedTheBaby)?.outcome).toEqual({ lands: true, spinOnLanding: 55 });
+
+    const bothLanded = advance(attemptTrick(rockedTheBaby), 2.5);
+
+    expect(bothLanded.landedTricks).toEqual(["rock-the-baby", "man-on-the-flying-trapeze"]);
+    expect(bothLanded.phase).toBe("Sleeping");
+    expect(bothLanded.spin).toBeCloseTo(55, 10);
+  });
+
+  /** The same gate Rock the Baby crosses, reached by the Bearing instead of a stronger Throw. */
+  it("moves from fatal to safe on the Bearing as well as on Throw Power", () => {
+    const rockedTheBaby = advance(attemptTrick(throwYoyo(afterBuyingBearing(8))), 1.5);
+
+    expect(previewAttempt(rockedTheBaby)?.outcome.lands).toBe(true);
+    expect(advance(attemptTrick(rockedTheBaby), 2.5).landedTricks).toEqual([
+      "rock-the-baby",
+      "man-on-the-flying-trapeze",
+    ]);
+  });
+
+  it("compounds its ×1.5 with Rock the Baby's ×1.25 rather than replacing it", () => {
+    const geared = throwYoyo(afterBuyingThrowPower(5));
+    const before = sustainedStyle(geared);
+
+    const bothLanded = advance(attemptTrick(advance(attemptTrick(geared), 1.5)), 2.5);
+
+    expect(before).toBeCloseTo(10 / 13, 10);
+    expect(sustainedStyle(bothLanded)).toBeCloseTo((10 / 13) * 1.25 * 1.5, 10);
+  });
+
+  it("leaves Brain Twister as the only Trick left once it lands", () => {
+    const geared = throwYoyo(afterBuyingThrowPower(5));
+
+    const bothLanded = advance(attemptTrick(advance(attemptTrick(geared), 1.5)), 2.5);
+
+    expect(nextTrick(bothLanded)?.name).toBe("Brain Twister");
+  });
+
+  /**
+   * ADR 0014 again, this time on the second row: an Attempt reads the decay the Throw captured,
+   * so a Bearing bought after committing to it cannot rescue an Attempt already doomed by the
+   * Spin the Throw was carrying when it began.
+   */
+  it("is not rescued by a Bearing bought after the Attempt was committed to", () => {
+    const rockedTheBaby = advance(attemptTrick(freshSleeper()), 1.5);
+    const doomed = attemptTrick({ ...rockedTheBaby, style: 1_000 });
+
+    const shopping = buyBearing(buyBearing(buyBearing(doomed)));
+
+    expect(shopping.bearingLevel).toBe(3);
+    expect(sustainedStyle(shopping)).toBeGreaterThan(sustainedStyle(doomed));
+    expect(advance(shopping, 1.375).phase).toBe("Rewinding");
+    expect(advance(shopping, 1.375).landedTricks).toEqual(["rock-the-baby"]);
+  });
+});
+
+/**
  * ADR 0004 again: an Attempt the Sleeper cannot sustain kills the yoyo early, teaches nothing
  * and forfeits the rest of the Throw Cycle. It is never refused and never random — the player
  * has been shown the outcome and has chosen to gamble the tail of a Throw.

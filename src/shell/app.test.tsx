@@ -9,6 +9,7 @@ import { App } from "./app.js";
 import { createGameStore, type GameStore } from "./store.js";
 import {
   completeThrowCycles,
+  gearedFreshSleeper,
   restoreAfterAbsence,
   sleeperWithAutoThrower,
 } from "./test-helpers.js";
@@ -301,6 +302,45 @@ describe("the 1A Division", () => {
 
     expect(renderToStaticMarkup(<App store={store} />)).toContain(
       'aria-label="Rock the Baby: an Attempt in progress on the Sleeper"',
+    );
+  });
+
+  /**
+   * #68: a strong enough Throw carries a player through both rows of the same Sleeper, and the
+   * plan asks that landing compounds rewards, shows Man on the Flying Trapeze's own motion while
+   * it runs, and opens Brain Twister the instant it lands.
+   */
+  it("lands Man on the Flying Trapeze on the same Sleeper once Gear makes it survivable, and opens Brain Twister", () => {
+    let now = 0;
+    const store = createGameStore({
+      now: () => now,
+      restored: { tickedAt: now, state: gearedFreshSleeper(5) },
+    });
+
+    store.attemptTrick();
+    now = 1_500;
+    store.tick();
+    store.attemptTrick();
+
+    now = 2_500;
+    store.tick();
+    expect(renderToStaticMarkup(<App store={store} />)).toContain(
+      'aria-label="Man on the Flying Trapeze: an Attempt in progress on the Sleeper"',
+    );
+
+    now = 4_000;
+    store.tick();
+
+    const ladder = trickLadderMarkup(store);
+    expect(ladder.match(/Landed/g)).toHaveLength(2);
+    expect(ladder).not.toContain("Land Man on the Flying Trapeze first");
+    expect(ladder).not.toContain("Land Brain Twister first");
+    // 55 Spin left is not enough for Brain Twister's 200-Spin cost, so it opens fatal rather
+    // than closed.
+    expect(ladder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
+
+    expect(renderToStaticMarkup(<App store={store} />)).toMatch(
+      /<output[^>]*aria-label="Sustained Style"[^>]*>1.44<\/output>/,
     );
   });
 });
