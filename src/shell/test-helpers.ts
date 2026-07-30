@@ -1,6 +1,7 @@
 import {
   autoThrowerCost,
   buyAutoThrower,
+  buyThrowPower,
   initialState,
   throwYoyo,
   type GameState,
@@ -11,6 +12,13 @@ export function sleeperWithAutoThrower(): GameState {
   return throwYoyo(
     buyAutoThrower({ ...initialState(), style: autoThrowerCost() }),
   );
+}
+
+/** A fresh Sleeper thrown with `throwPowerLevels` of Throw Power already bought and paid for. */
+export function gearedFreshSleeper(throwPowerLevels: number): GameState {
+  let state = { ...initialState(), style: 1e6 };
+  for (let level = 0; level < throwPowerLevels; level++) state = buyThrowPower(state);
+  return throwYoyo({ ...state, style: 0 });
 }
 
 export function restoreAfterAbsence(state: GameState, seconds: number): GameStore {

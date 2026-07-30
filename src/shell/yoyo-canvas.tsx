@@ -163,10 +163,10 @@ function drawYoyo(
  * it draws comes from `progress`, which is core Attempt state (ADR 0014): the shell runs no
  * second timer, so the picture cannot drift from the simulation resolving it.
  *
- * Drawn for Rock the Baby and for nothing else. Landing it opens the next row on the same
- * Sleeper, so a Trapeze Attempt is already reachable, and drawing a cradle for one would be the
- * wrong Trick performed convincingly — worse than no motion at all. The others fall back to the
- * plain string until #68 and #69 give them the distinct motions the plan asks for.
+ * Drawn for Rock the Baby and for nothing else: landing it opens Man on the Flying Trapeze on the
+ * same Sleeper, which now has its own motion below rather than borrowing this one, and drawing a
+ * cradle for it would be the wrong Trick performed convincingly — worse than no motion at all.
+ * Brain Twister still falls back to the plain string until #69 gives it its own.
  */
 function drawCradle(
   context: CanvasRenderingContext2D,
@@ -201,6 +201,51 @@ function drawCradle(
 function swingOffset(progress: number, reducedMotion: boolean): number {
   if (reducedMotion) return 0;
   return Math.sin(progress * Math.PI * 3) * 34 * (1 - progress * 0.35);
+}
+
+/**
+ * Man on the Flying Trapeze: the string is pinched into a bar overhead and the yoyo swings
+ * beneath it in one wide pendulum pass, rather than the cradle's three quick rocks before it — a
+ * different shape and a different rhythm, so the two Tricks read apart even side by side. Every
+ * figure it draws comes from `progress`, the same core Attempt state the cradle reads (ADR 0014).
+ *
+ * Drawn for Man on the Flying Trapeze and for nothing else. Brain Twister still falls back to the
+ * plain string until #69 gives it its own.
+ */
+function drawTrapezeBar(context: CanvasRenderingContext2D, hand: Point, yoyo: Point): void {
+  const barY = hand.y + 30;
+  const barHalfWidth = 30;
+
+  context.save();
+  context.strokeStyle = "#c7bfae";
+  context.lineWidth = 1.4;
+  context.lineJoin = "round";
+  context.beginPath();
+  context.moveTo(hand.x, hand.y + 14);
+  context.lineTo(hand.x - barHalfWidth, barY);
+  context.moveTo(hand.x, hand.y + 14);
+  context.lineTo(hand.x + barHalfWidth, barY);
+  context.moveTo(hand.x - barHalfWidth, barY);
+  context.lineTo(hand.x + barHalfWidth, barY);
+  context.moveTo(hand.x, barY);
+  context.lineTo(yoyo.x, yoyo.y - YOYO_RADIUS + 3);
+  context.stroke();
+  context.restore();
+}
+
+/**
+ * How far the yoyo has swung beneath the bar: one wide pass from side to side, lowest at the
+ * centre of its arc and highest at either end — a pendulum on a fixed string, and a different
+ * shape from the cradle's three quick rocks.
+ *
+ * Under reduced motion it holds the middle of its arc, the cradle's rule again: what goes is the
+ * travel across the screen, not the state the Attempt is in.
+ */
+function trapezeOffset(progress: number, reducedMotion: boolean): Point {
+  if (reducedMotion) return { x: 0, y: 0 };
+
+  const lean = Math.sin(progress * Math.PI * 2);
+  return { x: lean * 52, y: (1 - lean * lean) * 18 };
 }
 
 function drawAttemptProgress(
@@ -251,14 +296,19 @@ function drawScene(
   const resting = yoyoPosition(state, size);
   const attempt = activeAttempt(state);
   const rocking = attempt?.trick.id === "rock-the-baby";
+  const flying = attempt?.trick.id === "man-on-the-flying-trapeze";
+  const trapeze = flying && attempt !== null ? trapezeOffset(attempt.progress, reducedMotion) : null;
   const yoyo =
     attempt !== null && rocking
       ? { x: resting.x + swingOffset(attempt.progress, reducedMotion), y: resting.y }
-      : resting;
+      : trapeze !== null
+        ? { x: resting.x + trapeze.x, y: resting.y + trapeze.y }
+        : resting;
   const spinRatio =
     state.phase === "Sleeping" ? clamp(state.spin / Math.max(throwPower(state), 1), 0, 1) : 0;
 
   if (attempt !== null && rocking) drawCradle(context, hand, yoyo, attempt.progress);
+  else if (attempt !== null && flying) drawTrapezeBar(context, hand, yoyo);
   else drawString(context, hand, yoyo);
 
   drawHand(context, hand);
