@@ -8,13 +8,15 @@ shaped the way it is.
 
 ```sh
 npm install
+npm run dev    # starts the game shell
 npm test        # the test suite
 npm run typecheck
-npm run build   # compiles the core to dist/
+npm run build   # builds the production app in dist/
 ```
 
-There is no shell yet — the simulation core in `src/core/` is headless and driven from its
-tests. Everything the game does with time goes through one function:
+The React shell in `src/shell/` runs the game in the browser. Its simulation core in
+`src/core/` remains headless and is driven independently from its tests. Everything the
+game does with time goes through one function:
 
 ```ts
 advance(state: GameState, seconds: number): GameState
