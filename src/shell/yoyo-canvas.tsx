@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
-import { rewindDuration, throwPower } from "../core/simulation.js";
+import { activeAttempt, rewindDuration, throwPower } from "../core/simulation.js";
 import type { GameState } from "../core/simulation.js";
 import type { GameStore } from "./store.js";
 
@@ -155,6 +155,70 @@ function drawYoyo(
   context.restore();
 }
 
+/**
+ * Rock the Baby: the string is pinched into a triangular cradle and the yoyo swings inside it.
+ *
+ * Stylised rather than simulated, but the defining motion is kept — a cradle, and a yoyo rocking
+ * across it — so that learning this Trick does not look like filling a progress bar. Every figure
+ * it draws comes from `progress`, which is core Attempt state (ADR 0014): the shell runs no
+ * second timer, so the picture cannot drift from the simulation resolving it.
+ *
+ * Drawn for Rock the Baby and for nothing else. Landing it opens the next row on the same
+ * Sleeper, so a Trapeze Attempt is already reachable, and drawing a cradle for one would be the
+ * wrong Trick performed convincingly — worse than no motion at all. The others fall back to the
+ * plain string until #68 and #69 give them the distinct motions the plan asks for.
+ */
+function drawCradle(
+  context: CanvasRenderingContext2D,
+  hand: Point,
+  yoyo: Point,
+  progress: number,
+): void {
+  const apex = { x: hand.x, y: hand.y + 16 };
+  const spread = 46 + 10 * Math.sin(progress * Math.PI);
+  const base = yoyo.y + YOYO_RADIUS * 0.5;
+
+  context.save();
+  context.strokeStyle = "#c7bfae";
+  context.lineWidth = 1.4;
+  context.lineJoin = "round";
+  context.beginPath();
+  context.moveTo(apex.x, apex.y);
+  context.lineTo(apex.x - spread, base);
+  context.lineTo(apex.x + spread, base);
+  context.closePath();
+  context.stroke();
+  context.restore();
+}
+
+/**
+ * How far the yoyo has swung across the cradle, from one side to the other and back.
+ *
+ * Under reduced motion it does not swing at all: the yoyo holds the middle of the cradle and
+ * the Attempt's progress is read from the arc drawn over it instead. The timing and the state
+ * stay legible — what goes is the travel across the screen, which is the part that provokes.
+ */
+function swingOffset(progress: number, reducedMotion: boolean): number {
+  if (reducedMotion) return 0;
+  return Math.sin(progress * Math.PI * 3) * 34 * (1 - progress * 0.35);
+}
+
+function drawAttemptProgress(
+  context: CanvasRenderingContext2D,
+  position: Point,
+  progress: number,
+): void {
+  context.save();
+  context.translate(position.x, position.y);
+  context.strokeStyle = "rgba(222, 118, 75, 0.85)";
+  context.lineWidth = 3;
+  context.lineCap = "round";
+  context.beginPath();
+  context.arc(0, 0, YOYO_RADIUS + 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+  context.stroke();
+  context.restore();
+}
+
 function rewindProgress(state: GameState): number {
   if (state.phase !== "Rewinding") return 0;
   return clamp(state.phaseElapsed / rewindDuration(state), 0, 1);
@@ -179,26 +243,54 @@ function drawScene(
   size: CanvasSize,
   state: GameState,
   angle: number,
+  reducedMotion: boolean,
 ): void {
   context.clearRect(0, 0, size.width, size.height);
 
   const hand = { x: size.width / 2, y: 38 };
-  const yoyo = yoyoPosition(state, size);
+  const resting = yoyoPosition(state, size);
+  const attempt = activeAttempt(state);
+  const rocking = attempt?.trick.id === "rock-the-baby";
+  const yoyo =
+    attempt !== null && rocking
+      ? { x: resting.x + swingOffset(attempt.progress, reducedMotion), y: resting.y }
+      : resting;
   const spinRatio =
     state.phase === "Sleeping" ? clamp(state.spin / Math.max(throwPower(state), 1), 0, 1) : 0;
 
-  drawString(context, hand, yoyo);
+  if (attempt !== null && rocking) drawCradle(context, hand, yoyo, attempt.progress);
+  else drawString(context, hand, yoyo);
+
   drawHand(context, hand);
   drawYoyo(context, yoyo, angle, spinRatio);
+  if (attempt !== null) drawAttemptProgress(context, yoyo, attempt.progress);
+}
+
+/**
+ * What the canvas is showing, in words. The picture is the readout, so this is how it reads to
+ * anyone not looking at it — and under reduced motion it is doing more of the work.
+ */
+function sceneDescription(attempting: string | null): string {
+  if (attempting === null) return "A yoyo on its string";
+  return `${attempting}: an Attempt in progress on the Sleeper`;
 }
 
 export function YoyoCanvas({ store }: YoyoCanvasProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const ladder = useSyncExternalStore(
+    store.subscribeToTrickLadder,
+    store.getTrickLadder,
+    store.getTrickLadder,
+  );
 
   useEffect(() => {
     const element = canvas.current;
     const context = element?.getContext("2d");
     if (!element || !context) return;
+
+    // Read per frame rather than captured once, so that a player turning the preference on mid
+    // Attempt gets the calmer picture immediately rather than at the next Throw.
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     let frame: number;
     let angle = 0;
@@ -214,11 +306,16 @@ export function YoyoCanvas({ store }: YoyoCanvasProps) {
 
       // The frame timestamp controls the drawn angle only. Game time still comes exclusively
       // from the store's wall clock; pausing this loop cannot change simulation results.
+      //
+      // The spin is left turning under reduced motion: it is a readout rather than decoration —
+      // ADR 0007 keeps the live Style rate off the screen as a digit and shows it as this motion
+      // — and it neither travels nor scrolls. What the preference drops is the swing across the
+      // cradle, which does.
       if (state.phase === "Sleeping") {
         angle = (angle + state.spin * SPIN_TO_RADIANS_PER_SECOND * drawStep) % (Math.PI * 2);
       }
 
-      drawScene(context, prepareCanvas(element, context), state, angle);
+      drawScene(context, prepareCanvas(element, context), state, angle, motionPreference.matches);
       frame = requestAnimationFrame(draw);
     };
 
@@ -227,7 +324,12 @@ export function YoyoCanvas({ store }: YoyoCanvasProps) {
   }, [store]);
 
   return (
-    <canvas ref={canvas} className="yoyo-canvas" role="img" aria-label="A yoyo on its string">
+    <canvas
+      ref={canvas}
+      className="yoyo-canvas"
+      role="img"
+      aria-label={sceneDescription(ladder.attempting)}
+    >
       A yoyo whose motion follows the current Throw Cycle.
     </canvas>
   );

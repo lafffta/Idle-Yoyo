@@ -7,6 +7,8 @@ import type {
   GameStore,
   GearOffer,
   GearShop as GearShopState,
+  TrickLadder as TrickLadderState,
+  TrickRow as TrickRowState,
 } from "./store.js";
 import { YoyoCanvas } from "./yoyo-canvas.js";
 
@@ -17,6 +19,11 @@ type AppProps = {
 
 const THROW_READY_COPY = "Ready to Throw.";
 const THROW_WAITING_COPY = "Available when the yoyo is back in hand.";
+
+/** The plan's onboarding line, kept inline and non-blocking rather than behind a second modal. */
+const TRICK_LADDER_COPY =
+  "Attempts drain Spin. Land a Trick to multiply Style permanently. Run out of Spin and the Yoyo dies.";
+const ATTEMPT_WAITING_COPY = "Available while the yoyo is a Sleeper.";
 
 function UnreadableSaveWarning() {
   return (
@@ -216,6 +223,120 @@ function GearShop({ shop, store }: { shop: GearShopState; store: GameStore }) {
   );
 }
 
+function attemptForecastCopy(store: GameStore): string {
+  const forecast = store.getAttemptForecast();
+  if (forecast === null) return ATTEMPT_WAITING_COPY;
+
+  // Exact, never hedged: linear decay makes the whole Attempt knowable before it begins, and
+  // ADR 0007 asks for a figure like this to be stated at full confidence (ADR 0001, ADR 0014).
+  return forecast.outcome.lands
+    ? `Lands with ${formatNumber(forecast.outcome.spinOnLanding)} Spin still turning.`
+    : `Runs out of Spin after ${formatNumber(forecast.outcome.secondsUntilDeath)}s, and the Yoyo dies.`;
+}
+
+/**
+ * The forecast falls with the Sleeper, so it is written straight to the DOM each frame rather
+ * than re-rendering the ladder sixty times a second — the Style balance is kept live the same
+ * way. The frame loop reads the simulation; it never advances it.
+ */
+function AttemptForecast({ store }: AppProps) {
+  const forecast = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    let frame: number;
+
+    const redraw = () => {
+      if (forecast.current) forecast.current.textContent = attemptForecastCopy(store);
+      frame = requestAnimationFrame(redraw);
+    };
+
+    frame = requestAnimationFrame(redraw);
+    return () => cancelAnimationFrame(frame);
+  }, [store]);
+
+  return (
+    <p ref={forecast} className="trick-forecast">
+      {attemptForecastCopy(store)}
+    </p>
+  );
+}
+
+function TrickRow({
+  row,
+  ladder,
+  store,
+}: {
+  row: TrickRowState;
+  ladder: TrickLadderState;
+  store: GameStore;
+}) {
+  const isNext = row.status === "next";
+
+  return (
+    <article className={`trick-row is-${row.status}`}>
+      <div className="trick-copy">
+        <h3>{row.name}</h3>
+        <span className="trick-terms">
+          {formatNumber(row.durationSeconds)}s · ×{formatNumber(row.styleMultiplier)} Style
+        </span>
+        {isNext && ladder.attempting !== null ? (
+          <p className="trick-forecast" aria-live="polite">
+            {ladder.attempting} in progress. An Attempt cannot be cancelled.
+          </p>
+        ) : null}
+        {isNext && ladder.attempting === null ? <AttemptForecast store={store} /> : null}
+      </div>
+
+      {isNext ? (
+        <div className="trick-purchase">
+          <button
+            className="action-button trick-attempt-button"
+            type="button"
+            disabled={!ladder.attemptable}
+            onClick={store.attemptTrick}
+          >
+            {/* Never refused for being fatal: the player has been shown the cost (ADR 0004). */}
+            {ladder.lands === false ? "Attempt anyway" : `Attempt ${row.name}`}
+          </button>
+        </div>
+      ) : (
+        <span className="trick-state">
+          {row.status === "landed" ? "Landed" : `Land ${row.requires} first`}
+        </span>
+      )}
+    </article>
+  );
+}
+
+/**
+ * The 1A Division: every Trick the slice ships, in the order they must be landed. No 2A–5A rows
+ * — the plan asks that locked Divisions are not advertised before their progression exists.
+ */
+function TrickLadder({ store }: AppProps) {
+  const ladder = useSyncExternalStore(
+    store.subscribeToTrickLadder,
+    store.getTrickLadder,
+    store.getTrickLadder,
+  );
+
+  return (
+    <section className="trick-ladder" aria-labelledby="trick-ladder-heading">
+      <div className="trick-ladder-heading">
+        <div>
+          <p className="eyebrow">1A Division</p>
+          <h2 id="trick-ladder-heading">Learn a Trick</h2>
+        </div>
+        <p>{TRICK_LADDER_COPY}</p>
+      </div>
+      <div className="trick-list">
+        {ladder.rows.map((row) => (
+          <TrickRow key={row.id} row={row} ladder={ladder} store={store} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ProjectedNight({ store }: AppProps) {
   const [projection, setProjection] = useState(() => store.getProjectedNight());
 
@@ -349,6 +470,8 @@ export function App({ store, saveWasUnreadable = false }: AppProps) {
           <ThrowControl store={store} />
         </div>
       </section>
+
+      <TrickLadder store={store} />
 
       <GearShop shop={shop} store={store} />
 

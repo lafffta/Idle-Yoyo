@@ -1,4 +1,11 @@
-import { PROVISIONAL } from "./constants.js";
+import { PROVISIONAL, TRICKS_1A } from "./constants.js";
+
+/**
+ * The ladder itself, re-exported so that everything outside the core reaches it through the one
+ * module ADR 0008 puts the simulation behind. A shell drawing the 1A Division reads its rows
+ * from here and their order from the order they are in.
+ */
+export { TRICKS_1A };
 
 /**
  * The simulation core (ADR 0008). Everything here is a pure function of the state it is given.
@@ -25,6 +32,33 @@ export type Phase = "Sleeping" | "Rewinding" | "Ready";
 export type ActiveThrowGear = {
   bearingLevel: number;
   rewindSpeedLevel: number;
+};
+
+/**
+ * One row of a Division's ladder: a name, how long performing it takes, what landing it
+ * multiplies Style by forever, and how much harder it drives the Sleeper while it runs.
+ *
+ * The shape is read off the ladder rather than declared over it, so `constants.ts` stays the one
+ * place a figure can be changed and there is no second declaration to drift from it.
+ */
+export type Trick = (typeof TRICKS_1A)[number];
+
+/** How a landed Trick is named in a save. Ids rather than positions: the ladder may grow. */
+export type TrickId = Trick["id"];
+
+/**
+ * A Trick being performed on the Sleeper on the string right now.
+ *
+ * Carries what is left to do and not what it costs to do it. The drain is the active Throw's
+ * decay rate multiplied by the Trick's, and both of those are things a rebalance moves; a save
+ * holding either would come back quoting a difficulty this build no longer agrees with (ADR
+ * 0008), and holding the drain rate in particular would let a Bearing bought mid-Attempt rescue
+ * a committed Attempt through the back door ADR 0014 closes.
+ */
+export type Attempt = {
+  trickId: TrickId;
+  /** Seconds of the Trick still to perform. The Trick lands when this reaches zero. */
+  remaining: number;
 };
 
 /**
@@ -67,9 +101,21 @@ export type GameState = {
    * shape of the save until there is a Retire to honour it.
    */
   hasAutoThrower: boolean;
+  /**
+   * The Tricks landed, in the order they were landed. Permanent facts, kept through every Retire
+   * (ADR 0004), and named rather than counted so that the ladder can grow past them.
+   *
+   * The multiplier they are worth is derived from them — see `trickMultiplier`. Storing the
+   * product instead would be storing a stat, which ADR 0008 bars for the same reason it bars a
+   * stored Throw Power: a rebalanced reward would leave every old save richer or poorer than the
+   * game it is loaded into, with nothing able to tell which figure was meant.
+   */
+  landedTricks: TrickId[];
+  /** The Trick in progress, or `null`. Meaningful only while `Sleeping`. */
+  attempt: Attempt | null;
 };
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export function initialState(): GameState {
   return {
@@ -84,6 +130,8 @@ export function initialState(): GameState {
     rewindSpeedLevel: 0,
     activeThrowGear: { bearingLevel: 0, rewindSpeedLevel: 0 },
     hasAutoThrower: false,
+    landedTricks: [],
+    attempt: null,
   };
 }
 
@@ -216,7 +264,13 @@ export function buyAutoThrower(state: GameState): GameState {
   return { ...state, style: state.style - cost, hasAutoThrower: true };
 }
 
-/** A Throw is legal only from `Ready`. */
+/**
+ * A Throw is legal only from `Ready`.
+ *
+ * The fresh Sleeper starts with no Trick in progress. Nothing reaches `Ready` still Attempting —
+ * an Attempt either lands or kills the yoyo, and both resolve inside the Sleeper — so this
+ * clears a field that is already clear, and is here for the save that arrives saying otherwise.
+ */
 export function throwYoyo(state: GameState): GameState {
   if (state.phase !== "Ready") return state;
   return {
@@ -228,7 +282,173 @@ export function throwYoyo(state: GameState): GameState {
       bearingLevel: state.bearingLevel,
       rewindSpeedLevel: state.rewindSpeedLevel,
     },
+    attempt: null,
   };
+}
+
+/**
+ * The Trick of that name, or `undefined` if this build has no such Trick.
+ *
+ * Takes a bare `string` because its caller is the save layer, which is holding a document it has
+ * not yet decided to trust — a stored id is only a `TrickId` once something has checked, and this
+ * is the check. The ladder is code and a save is not, so the two can disagree.
+ */
+export function findTrick(id: string): Trick | undefined {
+  return TRICKS_1A.find((candidate) => candidate.id === id);
+}
+
+function trickById(id: TrickId): Trick {
+  const trick = findTrick(id);
+  // Unreachable through the type: a save can only name a Trick this build still ships, because
+  // the save layer turns away a document naming anything else. Thrown rather than defaulted so
+  // that removing a row from the ladder is a loud change, not a Trick that stops draining Spin.
+  if (trick === undefined) throw new Error(`no such Trick: ${id}`);
+  return trick;
+}
+
+/**
+ * The one Trick the player may Attempt: the first on the ladder they have not landed. `null`
+ * once the ladder is finished.
+ *
+ * A linear ladder is the whole gate. ADR 0004 has no declared Gear requirement anywhere — a
+ * Trick is out of reach because a weak Throw cannot supply the Spin it costs, and the player
+ * finds that out by reading the preview rather than by being refused.
+ */
+export function nextTrick(state: GameState): Trick | null {
+  return TRICKS_1A.find((trick) => !state.landedTricks.includes(trick.id)) ?? null;
+}
+
+/**
+ * What every Trick landed so far multiplies Style by, together — the product of their fixed
+ * rewards, and 1 until the first one lands.
+ *
+ * Derived from the landed facts every time it is asked for, so a rebalanced reward reprices a
+ * save that already holds the Trick rather than leaving it on the old figure (ADR 0008).
+ *
+ * Not exported: it reaches the player through the readouts that already carry it, and a second
+ * way to ask would be a second figure to keep in step with them.
+ */
+function trickMultiplier(state: GameState): number {
+  return state.landedTricks.reduce((product, id) => product * trickById(id).styleMultiplier, 1);
+}
+
+/**
+ * The Trick the player may begin this instant, or `null` when they may begin none — the yoyo is
+ * not spinning, a Trick is already being performed, or the ladder is finished.
+ *
+ * One rule, read by both the action and its preview, so that what the player is shown and what
+ * the game will accept cannot come apart: a preview exists exactly when `attemptTrick` goes
+ * through.
+ */
+function attemptableNow(state: GameState): Trick | null {
+  if (state.phase !== "Sleeping" || state.attempt !== null) return null;
+  return nextTrick(state);
+}
+
+/**
+ * The Spin an Attempt drains per second: the decay of the Throw already on the string, driven at
+ * the Trick's rate.
+ *
+ * `decayRate` reads the Bearing the Throw captured rather than the one the player owns (ADR
+ * 0013), which is what makes ADR 0014's promise hold without an Attempt having to remember
+ * anything: Gear bought mid-Attempt is owned at once, moves Sustained Style at once, and cannot
+ * reach back into the Attempt the player has already committed to.
+ */
+function attemptDrain(state: GameState, trick: Trick): number {
+  return decayRate(state) * trick.spinDrainMultiplier;
+}
+
+/**
+ * What an Attempt with `remaining` seconds still to perform does to the Sleeper it is on.
+ *
+ * The one place the landing rule lives. Landing wants Spin *left over* — a Trick that empties
+ * the Sleeper at the very instant it finishes has killed the yoyo rather than taught it anything
+ * — and that boundary is quoted to the player before they commit, integrated by `advance` when
+ * they do, and projected by `projectedYield` while it runs. Three readings of one rule would be
+ * three chances for the preview to promise a landing the simulation then refuses, so all three
+ * ask here.
+ */
+function attemptOutcome(state: GameState, trick: Trick, remaining: number): AttemptOutcome {
+  const drain = attemptDrain(state, trick);
+  const spinOnLanding = state.spin - drain * remaining;
+
+  return spinOnLanding > 0
+    ? { lands: true, spinOnLanding }
+    : { lands: false, secondsUntilDeath: state.spin / drain };
+}
+
+/**
+ * Begin the next Trick on the Sleeper on the string. The one action Tricks have, and the only
+ * thing the game ever asks the player to do with their hands (ADR 0004).
+ *
+ * Refused off a live Sleeper, and refused while another Attempt is running: an Attempt cannot be
+ * cancelled, restarted or swapped, so there is no way to spend the commitment twice.
+ *
+ * **A fatal Attempt is not refused.** The outcome is known exactly before the player commits —
+ * `previewAttempt` says so in Spin or in seconds — so attempting a Trick the Sleeper cannot
+ * sustain is a choice to gamble the tail of a Throw, not an accident to be protected from. ADR
+ * 0004 rests on that: the alternative is a dice roll, and a refusal would delete the trade along
+ * with the risk. Costs nothing and moves no time; only `advance` resolves it.
+ */
+export function attemptTrick(state: GameState): GameState {
+  const trick = attemptableNow(state);
+  if (trick === null) return state;
+
+  return { ...state, attempt: { trickId: trick.id, remaining: trick.durationSeconds } };
+}
+
+/**
+ * What an Attempt does when it ends, quoted exactly and for the same reason `projectedYield` is:
+ * linear decay makes the whole Attempt knowable at the instant it starts (ADR 0001), so ADR 0007
+ * asks for it stated at full confidence. A landing quotes the Spin the yoyo will be left
+ * holding; a fatal Attempt quotes how many seconds it survives. Neither hedges, and both are
+ * what the yoyo actually does — the tests measure them by playing the Attempt out.
+ */
+export type AttemptOutcome =
+  | { readonly lands: true; readonly spinOnLanding: number }
+  | { readonly lands: false; readonly secondsUntilDeath: number };
+
+/**
+ * Everything the player needs before committing: which Trick is on offer, how long it takes,
+ * what landing it pays, and what it would do to the Sleeper they have.
+ *
+ * The Trick travels with the outcome rather than being fetched beside it, so a shell cannot show
+ * one row's reward against another row's landing Spin.
+ */
+export type AttemptPreview = {
+  readonly trick: Trick;
+  readonly outcome: AttemptOutcome;
+};
+
+/**
+ * What beginning the next Attempt right now would do, in full, or `null` when there is nothing
+ * to attempt — the yoyo is not spinning, a Trick is already running, or the ladder is finished.
+ */
+export function previewAttempt(state: GameState): AttemptPreview | null {
+  const trick = attemptableNow(state);
+  if (trick === null) return null;
+
+  return { trick, outcome: attemptOutcome(state, trick, trick.durationSeconds) };
+}
+
+/**
+ * The Trick being performed and how far through it is, from 0 as it begins to 1 as it resolves.
+ *
+ * ADR 0014 puts Attempt progress in the core and says the shell "renders that state and never
+ * runs a second timer for it". This is that state: an animation reads it every frame and stays
+ * synchronised to the simulation by construction, rather than by two clocks agreeing.
+ */
+export type ActiveAttempt = {
+  readonly trick: Trick;
+  readonly progress: number;
+};
+
+export function activeAttempt(state: GameState): ActiveAttempt | null {
+  const attempt = state.attempt;
+  if (attempt === null || state.phase !== "Sleeping") return null;
+
+  const trick = trickById(attempt.trickId);
+  return { trick, progress: 1 - attempt.remaining / trick.durationSeconds };
 }
 
 /**
@@ -303,24 +523,62 @@ export function advance(state: GameState, seconds: number): GameState {
       continue;
     }
 
-    const decay = decayRate(current);
+    // An Attempt is activity inside the Sleeper and not a fourth phase (ADR 0014): the yoyo goes
+    // on spinning and goes on earning, and all the Trick changes is how hard it is driven.
+    const attempt = current.attempt;
+    const trick = attempt === null ? null : trickById(attempt.trickId);
+    const decay = trick === null ? decayRate(current) : attemptDrain(current, trick);
     const untilDead = current.spin / decay;
-    const dies = remaining >= untilDead;
-    const dt = dies ? untilDead : remaining;
+
+    // Two boundaries can end this segment and only the nearer one is reached. Whether the Trick
+    // gets there first is `attemptOutcome`'s rule to state, not one to restate here.
+    const landsAt =
+      attempt !== null && trick !== null && attemptOutcome(current, trick, attempt.remaining).lands
+        ? attempt.remaining
+        : null;
+    const untilBoundary = landsAt ?? untilDead;
+    const reaches = remaining >= untilBoundary;
+    const dt = reaches ? untilBoundary : remaining;
 
     // The integral of k × Spin across the segment: Spin falls linearly over it, so the
-    // Style earned is the area under that line, not the rate at either end of it.
-    const earned = PROVISIONAL.stylePerSpinPerSecond * (current.spin * dt - (decay * dt * dt) / 2);
+    // Style earned is the area under that line, not the rate at either end of it. A landing is a
+    // boundary partly for this reason — the multiplier changes there, and a segment straddling it
+    // would earn the whole of itself at one rate or the other.
+    const earned =
+      PROVISIONAL.stylePerSpinPerSecond *
+      trickMultiplier(current) *
+      (current.spin * dt - (decay * dt * dt) / 2);
 
-    current = {
+    const banked = {
       ...current,
       style: current.style + earned,
       lifetimeStyle: current.lifetimeStyle + earned,
-      // The Dead Yoyo is the instant Spin reaches zero, not a phase to sit in.
-      ...(dies
-        ? { spin: 0, phase: "Rewinding" as const, phaseElapsed: 0 }
-        : { spin: current.spin - decay * dt, phaseElapsed: current.phaseElapsed + dt }),
     };
+
+    if (!reaches) {
+      current = {
+        ...banked,
+        spin: current.spin - decay * dt,
+        phaseElapsed: current.phaseElapsed + dt,
+        attempt: attempt === null ? null : { ...attempt, remaining: attempt.remaining - dt },
+      };
+    } else if (attempt !== null && landsAt !== null) {
+      // Landed, and the Sleeper it was landed on carries on with the Spin it has left. The Trick
+      // is a permanent fact from this instant: everything the rest of this Throw earns is already
+      // multiplied by it, and so is the next Trick's row, which may be Attempted straight away.
+      current = {
+        ...banked,
+        spin: current.spin - decay * dt,
+        phaseElapsed: current.phaseElapsed + dt,
+        attempt: null,
+        landedTricks: [...current.landedTricks, attempt.trickId],
+      };
+    } else {
+      // The Dead Yoyo is the instant Spin reaches zero, not a phase to sit in. An Attempt that
+      // brought the yoyo here forfeits the rest of the Throw Cycle and teaches nothing; the Trick
+      // is left on the ladder for the next Throw to try again (ADR 0004).
+      current = { ...banked, spin: 0, phase: "Rewinding", phaseElapsed: 0, attempt: null };
+    }
     remaining -= dt;
   }
 
@@ -361,7 +619,7 @@ function uptime(state: GameState): number {
  */
 export function sustainedStyle(state: GameState): number {
   const ceiling = (PROVISIONAL.stylePerSpinPerSecond * throwPower(state)) / 2;
-  return ceiling * uptime(state);
+  return ceiling * uptime(state) * trickMultiplier(state);
 }
 
 /**
@@ -380,7 +638,7 @@ export function sustainedStyle(state: GameState): number {
  */
 export function currentStyleRate(state: GameState): number {
   if (state.phase !== "Sleeping") return 0;
-  return PROVISIONAL.stylePerSpinPerSecond * state.spin;
+  return PROVISIONAL.stylePerSpinPerSecond * state.spin * trickMultiplier(state);
 }
 
 /**
@@ -400,8 +658,29 @@ export function currentStyleRate(state: GameState): number {
  *
  * Counts only what is still to come, so it falls as the Sleeper is spent and is zero whenever
  * there is no Throw in progress to project.
+ *
+ * An Attempt in progress is part of what is still to come, and it is projected rather than
+ * ignored: the Sleeper drains at the Trick's rate until it lands, and everything after it lands
+ * is worth the Trick's multiplier more. A projection quoting the undisturbed decay would be
+ * wrong in both directions at once — too long a Sleeper and too small a reward — and would be
+ * wrong precisely while the player watched the Attempt they had just committed to. A fatal
+ * Attempt is projected as the shortened Sleeper it is.
  */
 export function projectedYield(state: GameState): number {
   if (state.phase !== "Sleeping") return 0;
-  return (PROVISIONAL.stylePerSpinPerSecond * state.spin ** 2) / (2 * decayRate(state));
+
+  const perSpin = PROVISIONAL.stylePerSpinPerSecond * trickMultiplier(state);
+  const decay = decayRate(state);
+  const attempt = state.attempt;
+  if (attempt === null) return (perSpin * state.spin ** 2) / (2 * decay);
+
+  const trick = trickById(attempt.trickId);
+  const drain = attemptDrain(state, trick);
+  const outcome = attemptOutcome(state, trick, attempt.remaining);
+  if (!outcome.lands) return (perSpin * state.spin ** 2) / (2 * drain);
+
+  const untilItLands =
+    perSpin * (state.spin * attempt.remaining - (drain * attempt.remaining ** 2) / 2);
+  const afterItLands = (perSpin * trick.styleMultiplier * outcome.spinOnLanding ** 2) / (2 * decay);
+  return untilItLands + afterItLands;
 }

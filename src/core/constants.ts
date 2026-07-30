@@ -82,3 +82,50 @@ export const PROVISIONAL = {
    */
   autoThrowerCost: 250,
 } as const;
+
+/**
+ * PROVISIONAL — the 1A Division, in the only order its Tricks may be landed in. Every figure
+ * below is a placeholder under exactly the rule the file opens with, and the ladder lives here
+ * rather than beside the simulation so that the balance stays in one file (ADR 0009).
+ *
+ * A row is three numbers and no derived rate. `spinDrainMultiplier` multiplies the decay rate
+ * of the Throw already on the string for `durationSeconds`, which is ADR 0014's whole decision:
+ * an Attempt costs `durationSeconds × spinDrainMultiplier × D`, so a better Bearing makes every
+ * Trick safer without any Trick knowing the Bearing exists, and a flat Spin fee would have made
+ * the Bearing incidental to the content ladder. Nothing stores that product — the Bearing moves
+ * `D`, and a save holding the answer would come back quoting a difficulty from before a
+ * rebalance.
+ *
+ * The durations and the Style multipliers are the plan's (`docs/plans/first-1a-trick-slice.md`).
+ * The drain multipliers are not: they are the first guess at the difficulty curve, and only Rock
+ * the Baby's has been checked against anything. At the constants as they stand it costs 45 of an
+ * opening Throw's 100 Spin, so it lands from any moment before 2.75s of a 5s Sleeper — at 2.75s
+ * exactly the Spin runs out as the Trick finishes, which is a death — leaving over half the
+ * opening Sleeper safe, which is the "safely lands on the opening Throw before any Gear
+ * purchase" the plan asks of this row. `simulation.test.ts` holds that as a behavioural guard.
+ * #71 is where the whole ladder meets the tuning harness and the other two rows are measured;
+ * until then their multipliers are unverified against the pacing contract.
+ */
+export const TRICKS_1A = [
+  {
+    id: "rock-the-baby",
+    name: "Rock the Baby",
+    durationSeconds: 1.5,
+    styleMultiplier: 1.25,
+    spinDrainMultiplier: 1.5,
+  },
+  {
+    id: "man-on-the-flying-trapeze",
+    name: "Man on the Flying Trapeze",
+    durationSeconds: 2.5,
+    styleMultiplier: 1.5,
+    spinDrainMultiplier: 2,
+  },
+  {
+    id: "brain-twister",
+    name: "Brain Twister",
+    durationSeconds: 4,
+    styleMultiplier: 2,
+    spinDrainMultiplier: 2.5,
+  },
+] as const;

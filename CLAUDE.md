@@ -5,7 +5,7 @@ An idle game in which the player throws a yoyo and earns Style while it spins at
 ## Read these first
 
 - **`CONTEXT.md`** — the domain glossary. Use its vocabulary in code, tests, commit messages and issues, and respect the _Avoid_ lists. They exist so that one idea has exactly one name.
-- **`docs/adr/`** — ten architecture decision records. They record *why*, and several of them forbid things that would otherwise look like reasonable simplifications. Read the ones covering the area you are touching before you change it.
+- **`docs/adr/`** — fourteen architecture decision records. They record *why*, and several of them forbid things that would otherwise look like reasonable simplifications. Read the ones covering the area you are touching before you change it.
 
 ## Architecture
 
@@ -57,7 +57,7 @@ Single-context — one `CONTEXT.md` and one `docs/adr/` at the repo root. See `d
 
 ## Current state
 
-The simulation core runs and is under test, headless — there is no shell yet. `advance` carries the yoyo through all three phases of the Throw Cycle, all three Gear stats are buyable, the readouts are derived from stats, and an Auto-Thrower re-Throws the instant the string is wound. Time away is the ordinary simulation run forward, and ADR 0002's parity claim is now an assertion rather than an intention.
+The game is playable. `advance` carries the yoyo through all three phases of the Throw Cycle, all three Gear stats are buyable, the readouts are derived from stats, and an Auto-Thrower re-Throws the instant the string is wound. Time away is the ordinary simulation run forward, and ADR 0002's parity claim is now an assertion rather than an intention. The shell spec (#45) and its nine tickets (#46–#54) are done: a canvas Throw Cycle, both shops, a save that survives the night and a save that cannot be read being kept rather than overwritten, and an Absence summary on return.
 
 The core-loop spec (#3) and all six of its tickets (#4–#9) are done. The spec's own Out of Scope section is the list of what it deliberately left: the shell, save and load, Tricks and Retire.
 
@@ -72,3 +72,7 @@ ADR 0002's promise is asserted rather than intended — `pacing.test.ts` guards 
 #34 has since found what that structure is. The harness values Gear over Session time only until an Auto-Thrower is owned, because nothing re-Throws the yoyo while the player is away — the honest model, and once recorded as changing no figure in any Report. It now decides the opening: with the condition removed the player buys seven levels of Throw Power before the machine and reaches it at 7m 48s instead of 13m 20s. So the untouched shop is a consequence of the model rather than of the price, which is why sweeping prices never moved it. What would fix it is untested — this ticket measured one deletion and no alternative.
 
 **#34 asked the same question #29 did, and got the same answer: the player, not the price.** The check that found the condition inert ran at 500 *and* against a player who could not bank Style. Re-running it at 500 against the saving player shows the condition already deciding everything — the machine moves from 26m 40s of play to 11m 31s, and from the second Session into the first — so ADR 0010 is what made it bite and #29's price cut is incidental. It also means this condition is what #29 acted on: without it the harness would have reported a 500-Style machine inside the first Session and no retune would have been called for.
+
+**Tricks have started arriving.** The first 1A slice (spec #66, plan `docs/plans/first-1a-trick-slice.md`) is the work between the shell and Retire, and #67 is its first ticket: Rock the Baby, landable on the opening Throw of a yoyo with nothing bought. An Attempt is activity inside the Sleeper and not a fourth phase (ADR 0014) — the yoyo goes on spinning and goes on earning, and the Trick multiplies the decay of the Throw already on the string for a fixed duration. Landing and fatal depletion are both segment boundaries, so ADR 0002's parity holds across them and a committed Attempt resolves through an Absence. Because the drain reads the Bearing the Throw captured (ADR 0013), Gear bought mid-Attempt is owned at once and cannot rescue the Attempt. The save is at version 3; every version 2 save migrates with Style, Gear, Kit and the Throw on the string untouched and the ladder unlanded.
+
+All three rows of the ladder are defined, because the Division shows all three from the opening Throw, but only Rock the Baby's drain multiplier has been measured against anything: it costs 45 of an opening Throw's 100 Spin, so over half that Sleeper is safe. **The other two are guesses and the pacing contract is not yet guarded** — #68 and #69 land them, #70 names the resolved Trick in the Absence summary, and #71 is where the whole ladder meets the tuning harness. The simulated player still never Attempts anything, so `npm run tune` reports the same figures it did before Tricks existed.

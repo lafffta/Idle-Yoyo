@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { initialState, throwYoyo } from "../core/simulation.js";
+import {
+  advance,
+  attemptTrick,
+  buyAutoThrower,
+  buyThrowPower,
+  initialState,
+  throwYoyo,
+} from "../core/simulation.js";
 import {
   deserializeSave,
   loadSave,
@@ -43,7 +50,7 @@ describe("the saved game document", () => {
 
     expect(JSON.parse(serialized)).toEqual({
       savedAt: 12_345,
-      state: expect.objectContaining({ version: 2 }),
+      state: expect.objectContaining({ version: 3 }),
     });
     expect(JSON.parse(serialized).state).not.toHaveProperty("savedAt");
     expect(deserializeSave(serialized)).toEqual(saved);
@@ -101,7 +108,7 @@ describe("the saved game document", () => {
   });
 
   it("preserves a parseable current-version document whose GameState is incomplete", () => {
-    const original = JSON.stringify({ savedAt: 8_000, state: { version: 2 } });
+    const original = JSON.stringify({ savedAt: 8_000, state: { version: 3 } });
     const storage = memoryStorage({ [SAVE_KEY]: original });
 
     const loaded = loadSave({ storage, now: () => 12_345 });
@@ -109,6 +116,115 @@ describe("the saved game document", () => {
     expect(loaded.status).toBe("unreadable");
     if (loaded.status !== "unreadable") throw new Error("expected an unreadable save");
     expect(storage.getItem(loaded.preservedKey)).toBe(original);
+  });
+});
+
+/**
+ * Version 2 is every save written before the 1A Division existed — which, on the day this
+ * shipped, is every save any player has. Losing one to the new content would be worse than never
+ * shipping it, so the migration is tested as what a returning player would describe: their game,
+ * exactly as they left it, with a ladder they have not started.
+ */
+describe("a save written before there were any Tricks", () => {
+  /** A version 2 document: mid-Sleeper, with Style banked, Gear bought and an Auto-Thrower. */
+  function version2Document(): string {
+    const played = advance(
+      throwYoyo(buyAutoThrower(buyThrowPower({ ...initialState(), style: 1_000 }))),
+      2,
+    );
+    const { landedTricks, attempt, ...version2State } = played;
+
+    return JSON.stringify({ savedAt: 8_000, state: { ...version2State, version: 2 } });
+  }
+
+  it("keeps every fact it was written with", () => {
+    const before = JSON.parse(version2Document()).state;
+
+    const loaded = deserializeSave(version2Document());
+
+    expect(loaded?.state.style).toBe(before.style);
+    expect(loaded?.state.lifetimeStyle).toBe(before.lifetimeStyle);
+    expect(loaded?.state.throwPowerLevel).toBe(before.throwPowerLevel);
+    expect(loaded?.state.hasAutoThrower).toBe(true);
+    expect(loaded?.state.phase).toBe("Sleeping");
+    expect(loaded?.state.spin).toBe(before.spin);
+    expect(loaded?.state.phaseElapsed).toBe(before.phaseElapsed);
+    expect(loaded?.state.activeThrowGear).toEqual(before.activeThrowGear);
+  });
+
+  it("arrives at the new ladder with none of it landed and no Trick in progress", () => {
+    const loaded = deserializeSave(version2Document());
+
+    expect(loaded?.state.version).toBe(3);
+    expect(loaded?.state.landedTricks).toEqual([]);
+    expect(loaded?.state.attempt).toBe(null);
+  });
+
+  it("goes on playing the Sleeper it was saved during, and can Attempt a Trick on it", () => {
+    const loaded = deserializeSave(version2Document());
+    if (!loaded) throw new Error("expected the version 2 save to load");
+
+    const landed = advance(attemptTrick(loaded.state), 1.5);
+
+    expect(landed.landedTricks).toEqual(["rock-the-baby"]);
+    expect(landed.style).toBeGreaterThan(loaded.state.style);
+  });
+});
+
+describe("a saved Trick", () => {
+  it("round-trips a landed ladder and an Attempt in progress", () => {
+    const attempting = advance(attemptTrick(throwYoyo(initialState())), 1.7);
+    const saved = { savedAt: 12_345, state: attempting };
+
+    expect(attempting.landedTricks).toEqual(["rock-the-baby"]);
+    expect(attempting.attempt).toBe(null);
+    expect(deserializeSave(serializeSave(saved))).toEqual(saved);
+
+    // A second Trick, committed to and half performed, which is the state a tab closed mid
+    // Attempt writes out.
+    const midAttempt = advance(attemptTrick({ ...attempting, spin: 400 }), 1);
+    expect(midAttempt.attempt).not.toBe(null);
+    expect(deserializeSave(serializeSave({ savedAt: 12_345, state: midAttempt }))).toEqual({
+      savedAt: 12_345,
+      state: midAttempt,
+    });
+  });
+
+  /**
+   * A document naming a Trick this build does not ship would reach `trickMultiplier`, which
+   * throws on one. Turned away here so that it becomes the preserved-and-restarted path the
+   * player is warned about, rather than a crash on the first frame after loading.
+   */
+  it("refuses a document naming a Trick this game does not have", () => {
+    const document = JSON.stringify({
+      savedAt: 8_000,
+      state: { ...throwYoyo(initialState()), landedTricks: ["walk-the-dog"] },
+    });
+
+    expect(() => deserializeSave(document)).toThrow();
+  });
+
+  it("refuses a Trick being performed on a yoyo that is not spinning", () => {
+    const winding = advance(throwYoyo(initialState()), 6);
+    const document = JSON.stringify({
+      savedAt: 8_000,
+      state: { ...winding, attempt: { trickId: "rock-the-baby", remaining: 1 } },
+    });
+
+    expect(winding.phase).toBe("Rewinding");
+    expect(() => deserializeSave(document)).toThrow();
+  });
+
+  it("refuses an Attempt with more of a Trick left to perform than the Trick takes", () => {
+    const document = JSON.stringify({
+      savedAt: 8_000,
+      state: {
+        ...throwYoyo(initialState()),
+        attempt: { trickId: "rock-the-baby", remaining: 900 },
+      },
+    });
+
+    expect(() => deserializeSave(document)).toThrow();
   });
 });
 
