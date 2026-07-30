@@ -1,6 +1,8 @@
-import type { GameState } from "../core/simulation.js";
+import type { AttemptPreview, GameState, TrickId } from "../core/simulation.js";
 import {
+  activeAttempt,
   advance,
+  attemptTrick as attemptTrickInCore,
   autoThrowerCost,
   bearingCost,
   buyAutoThrower as buyAutoThrowerInCore,
@@ -8,10 +10,13 @@ import {
   buyRewindSpeed,
   buyThrowPower,
   initialState,
+  nextTrick,
+  previewAttempt,
   rewindSpeedCost,
   sustainedStyle,
   throwPowerCost,
   throwYoyo,
+  TRICKS_1A,
 } from "../core/simulation.js";
 import { PROVISIONAL_SHELL } from "./constants.js";
 
@@ -98,6 +103,62 @@ function gearShop(state: GameState): GearShop {
   };
 }
 
+export type TrickRowStatus = "landed" | "next" | "locked";
+
+export type TrickRow = {
+  id: TrickId;
+  name: string;
+  durationSeconds: number;
+  styleMultiplier: number;
+  status: TrickRowStatus;
+  /** The Trick this row waits on. Only ever set on a locked row. */
+  requires: string | null;
+};
+
+/**
+ * The 1A Division as a shell renders it: every row in ladder order, and the coarse facts about
+ * the Attempt on offer.
+ *
+ * What is deliberately *not* here is the exact Spin an Attempt would leave. That figure falls
+ * with the Sleeper, so it changes every frame, and putting it in a subscribed snapshot would
+ * re-render the ladder sixty times a second to move a decimal. It is read straight from the
+ * core instead — see `getAttemptForecast` — exactly as the Style balance already is.
+ */
+export type TrickLadder = {
+  rows: TrickRow[];
+  /** Whether the next Trick can be begun this instant. */
+  attemptable: boolean;
+  /** Whether beginning it now would land it. `null` when there is nothing to begin. */
+  lands: boolean | null;
+  /** The Trick being performed right now, or `null`. */
+  attempting: string | null;
+};
+
+function trickLadder(state: GameState): TrickLadder {
+  const next = nextTrick(state);
+  const preview = previewAttempt(state);
+  const performing = activeAttempt(state);
+
+  return {
+    rows: TRICKS_1A.map((trick, index) => {
+      const landed = state.landedTricks.includes(trick.id);
+      const previous = TRICKS_1A[index - 1];
+
+      return {
+        id: trick.id,
+        name: trick.name,
+        durationSeconds: trick.durationSeconds,
+        styleMultiplier: trick.styleMultiplier,
+        status: landed ? "landed" : next?.id === trick.id ? "next" : "locked",
+        requires: landed || next?.id === trick.id ? null : (previous?.name ?? null),
+      };
+    }),
+    attemptable: preview !== null,
+    lands: preview?.outcome.lands ?? null,
+    attempting: performing?.trick.name ?? null,
+  };
+}
+
 function autoThrowerOffer(state: GameState): AutoThrowerOffer {
   const price = autoThrowerCost();
   return {
@@ -144,6 +205,11 @@ export type GameStore = {
   getGearShop: () => GearShop;
   subscribeToGearShop: (listener: () => void) => () => void;
   buyGear: (gear: GearId) => void;
+  getTrickLadder: () => TrickLadder;
+  subscribeToTrickLadder: (listener: () => void) => () => void;
+  /** The exact outcome of Attempting right now, read live rather than subscribed. */
+  getAttemptForecast: () => AttemptPreview | null;
+  attemptTrick: () => void;
   tick: () => void;
   throwYoyo: () => void;
   isThrowAvailable: () => boolean;
@@ -166,8 +232,10 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
   const persistedChangeListeners = new Set<() => void>();
   const gearShopListeners = new Set<() => void>();
   const autoThrowerOfferListeners = new Set<() => void>();
+  const trickLadderListeners = new Set<() => void>();
   let currentGearShop = gearShop(state);
   let currentAutoThrowerOffer = autoThrowerOffer(state);
+  let currentTrickLadder = trickLadder(state);
 
   const sameGearShop = (nextShop: GearShop) =>
     currentGearShop.sustainedStyle === nextShop.sustainedStyle &&
@@ -182,11 +250,21 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
       );
     });
 
+  const sameTrickLadder = (nextLadder: TrickLadder) =>
+    currentTrickLadder.attemptable === nextLadder.attemptable &&
+    currentTrickLadder.lands === nextLadder.lands &&
+    currentTrickLadder.attempting === nextLadder.attempting &&
+    currentTrickLadder.rows.every((row, index) => {
+      const nextRow = nextLadder.rows[index];
+      return nextRow !== undefined && row.id === nextRow.id && row.status === nextRow.status;
+    });
+
   const replaceState = (nextState: GameState) => {
     const availabilityChanged = (state.phase === "Ready") !== (nextState.phase === "Ready");
     const nextGearShop = gearShop(nextState);
     const shopChanged = !sameGearShop(nextGearShop);
     const nextAutoThrowerOffer = autoThrowerOffer(nextState);
+    const nextTrickLadder = trickLadder(nextState);
     const autoThrowerOfferChanged =
       currentAutoThrowerOffer.price !== nextAutoThrowerOffer.price ||
       currentAutoThrowerOffer.affordable !== nextAutoThrowerOffer.affordable ||
@@ -203,9 +281,18 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
       currentAutoThrowerOffer = nextAutoThrowerOffer;
       for (const listener of autoThrowerOfferListeners) listener();
     }
+    if (!sameTrickLadder(nextTrickLadder)) {
+      currentTrickLadder = nextTrickLadder;
+      for (const listener of trickLadderListeners) listener();
+    }
   };
 
-  const purchase = (nextState: GameState) => {
+  /**
+   * A move the player made, rather than time passing: it changes the save and is written out at
+   * once. Beginning an Attempt belongs here for the same reason a purchase does — ADR 0014 makes
+   * it irreversible, so a crash between the commitment and the next save must not undo it.
+   */
+  const commit = (nextState: GameState) => {
     if (nextState === state) return;
     replaceState(nextState);
     for (const listener of persistedChangeListeners) listener();
@@ -276,7 +363,7 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
       autoThrowerOfferListeners.add(listener);
       return () => autoThrowerOfferListeners.delete(listener);
     },
-    buyAutoThrower: () => purchase(buyAutoThrowerInCore(state)),
+    buyAutoThrower: () => commit(buyAutoThrowerInCore(state)),
     getGearShop: () => currentGearShop,
     subscribeToGearShop: (listener) => {
       gearShopListeners.add(listener);
@@ -284,8 +371,15 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
     },
     buyGear: (gearId) => {
       const gear = GEAR.find(({ id }) => id === gearId);
-      if (gear) purchase(gear.buy(state));
+      if (gear) commit(gear.buy(state));
     },
+    getTrickLadder: () => currentTrickLadder,
+    subscribeToTrickLadder: (listener) => {
+      trickLadderListeners.add(listener);
+      return () => trickLadderListeners.delete(listener);
+    },
+    getAttemptForecast: () => previewAttempt(state),
+    attemptTrick: () => commit(attemptTrickInCore(state)),
     tick: () => {
       tickAt(now());
     },

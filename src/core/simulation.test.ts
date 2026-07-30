@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { GameState } from "./simulation.js";
 import {
+  activeAttempt,
   advance,
+  attemptTrick,
   autoThrowerCost,
   bearingCost,
   buyAutoThrower,
@@ -11,11 +13,14 @@ import {
   buyThrowPower,
   currentStyleRate,
   initialState,
+  nextTrick,
+  previewAttempt,
   projectedYield,
   rewindSpeedCost,
   sustainedStyle,
   throwPowerCost,
   throwYoyo,
+  TRICKS_1A,
 } from "./simulation.js";
 
 /** A Sleeper in progress, one Throw old, with the provisional opening stats. */
@@ -268,8 +273,8 @@ describe("the simulation as a pure function of its inputs", () => {
   });
 
   it("carries a schema version from the very first save", () => {
-    expect(initialState().version).toBe(2);
-    expect(advance(freshSleeper(), 3.7).version).toBe(2);
+    expect(initialState().version).toBe(3);
+    expect(advance(freshSleeper(), 3.7).version).toBe(3);
   });
 });
 
@@ -1159,6 +1164,422 @@ describe("coming back from eight hours away without an Auto-Thrower", () => {
   });
 });
 
+/**
+ * ADR 0004: a Trick is learned actively and earns passively. The Attempt is the only thing the
+ * game ever asks the player to do with their hands, and it is a decision rather than a purchase
+ * — no price, no dice, and a consequence known in full before it is taken.
+ *
+ * Rock the Baby is the first row of 1A and the tutorial for the whole mechanic, so what these
+ * assert is mostly that it is reachable at all: the plan asks for it to land on the opening
+ * Throw, from a yoyo with nothing bought.
+ */
+describe("Attempting a Trick", () => {
+  it("lands Rock the Baby on the opening Throw of a yoyo with no Gear at all", () => {
+    const landed = advance(attemptTrick(freshSleeper()), 1.5);
+
+    expect(landed.landedTricks).toEqual(["rock-the-baby"]);
+    expect(landed.phase).toBe("Sleeping");
+    expect(landed.attempt).toBe(null);
+  });
+
+  /**
+   * The margin, rather than the landing — a Trick that lands only when Attempted in the first
+   * instant of a Sleeper is not the "nearly free to reach" first Attempt ADR 0004 asks for, and
+   * it would be a tutorial most players failed by hesitating.
+   *
+   * This is what makes Rock the Baby's provisional drain multiplier the one figure on the ladder
+   * checked against anything, and it is a claim about the constants as they stand: at 45 Spin of
+   * an opening Throw's 100, more than half the Sleeper is safe. #71 carries the same guarantee
+   * to the tuning harness, where the whole ladder is measured.
+   */
+  it("lands from anywhere in the first half of that Sleeper, not only from its first instant", () => {
+    for (const attemptedAt of [0, 0.5, 1.5, 2.5]) {
+      const landed = advance(attemptTrick(advance(freshSleeper(), attemptedAt)), 1.5);
+
+      expect(landed.landedTricks).toEqual(["rock-the-baby"]);
+    }
+  });
+
+  it("goes on earning Style throughout, rather than pausing the Sleeper to perform", () => {
+    const attempting = attemptTrick(freshSleeper());
+
+    const halfwayThrough = advance(attempting, 0.75);
+
+    expect(halfwayThrough.phase).toBe("Sleeping");
+    // 100 Spin draining at 30/s for 0.75s: the area under it, at a penny a Spin-second.
+    expect(halfwayThrough.style).toBeCloseTo(0.01 * (100 * 0.75 - (30 * 0.75 ** 2) / 2), 10);
+  });
+
+  it("drives the Sleeper harder while it runs, so the Throw it was learned on is worth less", () => {
+    const undisturbed = advance(freshSleeper(), 8);
+    const learnedOn = advance(attemptTrick(freshSleeper()), 8);
+
+    // 1.5s at triple the usual drain costs 45 Spin, and the ×1.25 does not buy back all of it.
+    expect(undisturbed.style).toBeCloseTo(2.5, 10);
+    expect(learnedOn.style).toBeCloseTo(2.1078125, 10);
+    expect(learnedOn.style).toBeLessThan(undisturbed.style);
+  });
+
+  it("is refused while the yoyo waits in the hand, where there is no Sleeper to perform on", () => {
+    const ready = initialState();
+
+    expect(attemptTrick(ready)).toEqual(ready);
+  });
+
+  it("is refused while the string is still winding back up", () => {
+    const winding = advance(freshSleeper(), 6);
+
+    expect(winding.phase).toBe("Rewinding");
+    expect(attemptTrick(winding)).toEqual(winding);
+  });
+
+  /** An Attempt cannot be cancelled, restarted or swapped: there is one way out and it is time. */
+  it("is refused while another Attempt is already in progress, leaving it untouched", () => {
+    const halfwayThrough = advance(attemptTrick(freshSleeper()), 0.75);
+
+    expect(attemptTrick(halfwayThrough)).toEqual(halfwayThrough);
+  });
+
+  it("is a commitment and not a tick: beginning one moves no time and earns nothing", () => {
+    const sleeper = advance(freshSleeper(), 1);
+
+    const attempting = attemptTrick(sleeper);
+
+    expect(attempting.style).toBe(sleeper.style);
+    expect(attempting.spin).toBe(sleeper.spin);
+    expect(attempting.phaseElapsed).toBe(sleeper.phaseElapsed);
+  });
+
+  it("moves on to the next Trick once one is landed, rather than offering it again", () => {
+    const landed = advance(attemptTrick(freshSleeper()), 1.5);
+
+    expect(nextTrick(freshSleeper())?.name).toBe("Rock the Baby");
+    expect(nextTrick(landed)?.name).toBe("Man on the Flying Trapeze");
+  });
+
+  it("shows the 1A Division as three Tricks in the order they must be landed in", () => {
+    expect(TRICKS_1A.map((trick) => trick.name)).toEqual([
+      "Rock the Baby",
+      "Man on the Flying Trapeze",
+      "Brain Twister",
+    ]);
+  });
+});
+
+/**
+ * ADR 0004 again: an Attempt the Sleeper cannot sustain kills the yoyo early, teaches nothing
+ * and forfeits the rest of the Throw Cycle. It is never refused and never random — the player
+ * has been shown the outcome and has chosen to gamble the tail of a Throw.
+ */
+describe("an Attempt the Sleeper cannot sustain", () => {
+  it("kills the yoyo at the exact second the Spin runs out, mid-Trick", () => {
+    // 3.5s into a 5s Sleeper: 30 Spin left, and Rock the Baby drains it at 30 a second.
+    const nearlySpent = attemptTrick(advance(freshSleeper(), 3.5));
+
+    const justAlive = advance(nearlySpent, 0.999);
+    const dead = advance(nearlySpent, 1);
+
+    expect(justAlive.phase).toBe("Sleeping");
+    expect(dead.phase).toBe("Rewinding");
+    expect(dead.spin).toBe(0);
+  });
+
+  /**
+   * The boundary case, and the one a player would argue about: landing wants Spin *left over*,
+   * so a Trick that empties the Sleeper at the very instant it finishes has killed the yoyo.
+   * Exactly 45 Spin is exactly what Rock the Baby costs.
+   */
+  it("teaches nothing when the Spin runs out at the very instant the Trick completes", () => {
+    const exactlyEnough = attemptTrick(advance(freshSleeper(), 2.75));
+
+    expect(exactlyEnough.spin).toBeCloseTo(45, 10);
+    const resolved = advance(exactlyEnough, 1.5);
+
+    expect(resolved.landedTricks).toEqual([]);
+    expect(resolved.phase).toBe("Rewinding");
+  });
+
+  it("is not refused: the player may gamble the tail of a Throw, having been shown the cost", () => {
+    const nearlySpent = advance(freshSleeper(), 3.5);
+
+    const gambling = attemptTrick(nearlySpent);
+
+    // Accepted, and the yoyo dies half a second sooner for it: the Trick drains what was left of
+    // a Sleeper that still had 1.5 seconds to run.
+    expect(gambling).not.toEqual(nearlySpent);
+    expect(advance(gambling, 1).phase).toBe("Rewinding");
+    expect(advance(nearlySpent, 1).phase).toBe("Sleeping");
+  });
+
+  it("keeps everything the Sleeper had already banked before the Trick was begun", () => {
+    const nearlySpent = advance(freshSleeper(), 3.5);
+
+    const dead = advance(attemptTrick(nearlySpent), 1);
+
+    expect(dead.style).toBeGreaterThan(nearlySpent.style);
+    expect(dead.lifetimeStyle).toBeCloseTo(dead.style, 10);
+  });
+
+  it("leaves the Trick on the ladder to be attempted again on the next Throw", () => {
+    const dead = advance(attemptTrick(advance(freshSleeper(), 3.5)), 1);
+
+    const thrownAgain = throwYoyo(advance(dead, 3));
+
+    expect(nextTrick(thrownAgain)?.name).toBe("Rock the Baby");
+    expect(advance(attemptTrick(thrownAgain), 1.5).landedTricks).toEqual(["rock-the-baby"]);
+  });
+
+  it("winds the string back up on the ordinary Rewind, with no penalty of its own", () => {
+    const dead = advance(attemptTrick(advance(freshSleeper(), 3.5)), 1);
+
+    const stillWinding = advance(dead, 2.999);
+    const wound = advance(dead, 3);
+
+    expect(stillWinding.phase).toBe("Rewinding");
+    expect(wound.phase).toBe("Ready");
+  });
+});
+
+describe("what landing a Trick is worth", () => {
+  it("multiplies Sustained Style by exactly the Trick's reward, the instant it lands", () => {
+    const before = sustainedStyle(freshSleeper());
+
+    const landed = advance(attemptTrick(freshSleeper()), 1.5);
+
+    expect(before).toBeCloseTo(0.3125, 10);
+    expect(sustainedStyle(landed)).toBeCloseTo(0.390625, 10);
+    expect(sustainedStyle(landed)).toBeCloseTo(before * 1.25, 10);
+  });
+
+  it("multiplies what the rest of that same Sleeper earns, not merely the next Throw", () => {
+    const landed = advance(attemptTrick(freshSleeper()), 1.5);
+
+    const spent = advance(landed, 3);
+
+    // 55 Spin left, worth 0.75625 undisturbed, and 1.25 times that with the Trick in hand.
+    expect(landed.spin).toBeCloseTo(55, 10);
+    expect(spent.style - landed.style).toBeCloseTo(0.9453125, 10);
+  });
+
+  it("multiplies the Style rate the player is watching, immediately", () => {
+    const attempting = attemptTrick(freshSleeper());
+
+    const justBefore = advance(attempting, 1.4999);
+    const justAfter = advance(attempting, 1.5);
+
+    expect(currentStyleRate(justAfter) / currentStyleRate(justBefore)).toBeCloseTo(1.25, 3);
+  });
+
+  it("is permanent: every later Throw earns under it, and nothing takes it back", () => {
+    const landed = advance(attemptTrick(freshSleeper()), 1.5);
+    const backInTheHand = advance(landed, 8);
+
+    const nextThrow = advance(throwYoyo(backInTheHand), 8);
+
+    expect(nextThrow.style - backInTheHand.style).toBeCloseTo(2.5 * 1.25, 10);
+  });
+
+  it("earns while the player is away exactly as it earns while they watch", () => {
+    const landed = advance(attemptTrick(automaticSleeper()), 1.5);
+
+    const away = advance(landed, EIGHT_HOURS);
+
+    expect(away.style - landed.style).toBeCloseTo(sustainedStyle(landed) * EIGHT_HOURS, 0);
+  });
+});
+
+/**
+ * ADR 0007 asks for the projection to be shown at full confidence with no hedging language, and
+ * ADR 0001's linear decay is what earns that: the whole future of a Throw is known the instant it
+ * is thrown, and an Attempt is part of that future rather than an interruption to it.
+ *
+ * So these check the quoted figures against the yoyo actually playing them out, rather than
+ * against the arithmetic that produced them.
+ */
+describe("previewing an Attempt before committing to it", () => {
+  it("names the Trick, how long it takes and what landing it pays, before it is begun", () => {
+    const preview = previewAttempt(freshSleeper());
+
+    expect(preview?.trick.name).toBe("Rock the Baby");
+    expect(preview?.trick.durationSeconds).toBe(1.5);
+    expect(preview?.trick.styleMultiplier).toBe(1.25);
+  });
+
+  it("quotes the exact Spin the yoyo will be left holding, and it is left holding it", () => {
+    const sleeper = advance(freshSleeper(), 1);
+
+    const preview = previewAttempt(sleeper);
+    const landed = advance(attemptTrick(sleeper), 1.5);
+
+    expect(preview?.outcome).toEqual({ lands: true, spinOnLanding: 35 });
+    expect(landed.spin).toBeCloseTo(35, 10);
+    expect(landed.landedTricks).toEqual(["rock-the-baby"]);
+  });
+
+  it("quotes the exact second the yoyo will die, and it dies then", () => {
+    const nearlySpent = advance(freshSleeper(), 3.5);
+
+    const preview = previewAttempt(nearlySpent);
+    const attempting = attemptTrick(nearlySpent);
+
+    expect(preview?.outcome).toEqual({ lands: false, secondsUntilDeath: 1 });
+    expect(advance(attempting, 0.999).phase).toBe("Sleeping");
+    expect(advance(attempting, 1).phase).toBe("Rewinding");
+  });
+
+  it("calls the exact-zero Attempt a death rather than a landing", () => {
+    const exactlyEnough = advance(freshSleeper(), 2.75);
+
+    expect(previewAttempt(exactlyEnough)?.outcome).toEqual({
+      lands: false,
+      secondsUntilDeath: 1.5,
+    });
+  });
+
+  /**
+   * ADR 0004 declares no Gear requirement anywhere: a Trick is out of reach because a weak Throw
+   * cannot supply the Spin it costs, which is what puts Throw Power on the content ladder as well
+   * as the earning curve. ADR 0014 asks that the Bearing reach the same gate, and it does so
+   * without any Trick knowing the Bearing exists — an Attempt drains a multiple of whatever the
+   * Sleeper's own decay is.
+   */
+  it("moves from fatal to safe on either Gear stat that reaches the Sleeper", () => {
+    // 3.5 seconds into an opening Sleeper there are 30 Spin left and Rock the Baby wants 45.
+    const nearlySpent = advance(freshSleeper(), 3.5);
+    const strongerThrow = advance(throwYoyo(afterBuyingThrowPower(3)), 3.5);
+    const betterBearing = advance(throwYoyo(afterBuyingBearing(8)), 3.5);
+
+    expect(previewAttempt(nearlySpent)?.outcome.lands).toBe(false);
+    for (const geared of [strongerThrow, betterBearing]) {
+      expect(previewAttempt(geared)?.outcome.lands).toBe(true);
+      expect(advance(attemptTrick(geared), 1.5).landedTricks).toEqual(["rock-the-baby"]);
+    }
+  });
+
+  /**
+   * ADR 0014 closes the door ADR 0013 opened for the Bearing: an Attempt reads the decay rate the
+   * Throw captured, so buying a Bearing after committing cannot rescue an Attempt the player was
+   * told would be fatal. The purchase still happens, and Sustained Style still moves for it.
+   */
+  it("is not rescued by a Bearing bought after the Attempt was committed to", () => {
+    const doomed = attemptTrick({ ...advance(freshSleeper(), 3.5), style: 1_000 });
+
+    const shopping = buyBearing(buyBearing(buyBearing(doomed)));
+
+    expect(shopping.bearingLevel).toBe(3);
+    expect(sustainedStyle(shopping)).toBeGreaterThan(sustainedStyle(doomed));
+    expect(advance(shopping, 1).phase).toBe("Rewinding");
+    expect(advance(shopping, 1).landedTricks).toEqual([]);
+  });
+
+  it("offers nothing to preview when there is no Sleeper to perform on", () => {
+    expect(previewAttempt(initialState())).toBe(null);
+    expect(previewAttempt(advance(freshSleeper(), 6))).toBe(null);
+  });
+
+  it("offers nothing to preview while a Trick is already being performed", () => {
+    expect(previewAttempt(attemptTrick(freshSleeper()))).toBe(null);
+  });
+
+  it("projects the Throw in progress through the Attempt it is carrying", () => {
+    const attempting = attemptTrick(freshSleeper());
+
+    // The Attempt shortens the Sleeper and multiplies what is left of it, and the projection says
+    // so: what it quotes is what the Throw goes on to earn, to the last decimal.
+    expect(projectedYield(attempting)).toBeCloseTo(styleEarnedBeforeDying(attempting), 8);
+    expect(projectedYield(attempting)).toBeCloseTo(2.1078125, 10);
+  });
+
+  it("projects a fatal Attempt as the shortened Sleeper it is", () => {
+    const doomed = attemptTrick(advance(freshSleeper(), 3.5));
+
+    expect(projectedYield(doomed)).toBeCloseTo(styleEarnedBeforeDying(doomed), 8);
+    // 30 Spin drained at 30 a second is one second and 0.15 Style, not 0.225 over 1.5 seconds.
+    expect(projectedYield(doomed)).toBeCloseTo(0.15, 10);
+  });
+});
+
+/**
+ * ADR 0014 puts Attempt progress in the core so that a shell can draw the Trick without running a
+ * second timer beside the simulation. What it draws from therefore has to be a plain function of
+ * the state in hand, like every other readout (#8).
+ */
+describe("the Attempt in progress, as something to draw", () => {
+  it("runs from nothing done to the whole Trick done, over exactly its duration", () => {
+    const attempting = attemptTrick(freshSleeper());
+
+    expect(activeAttempt(attempting)?.trick.name).toBe("Rock the Baby");
+    expect(activeAttempt(attempting)?.progress).toBeCloseTo(0, 10);
+    expect(activeAttempt(advance(attempting, 0.75))?.progress).toBeCloseTo(0.5, 10);
+    expect(activeAttempt(advance(attempting, 1.4999))?.progress).toBeCloseTo(1, 3);
+  });
+
+  it("has nothing to draw before an Attempt, after one lands, or after one kills the yoyo", () => {
+    const attempting = attemptTrick(freshSleeper());
+
+    expect(activeAttempt(freshSleeper())).toBe(null);
+    expect(activeAttempt(advance(attempting, 1.5))).toBe(null);
+    expect(activeAttempt(advance(attemptTrick(advance(freshSleeper(), 3.5)), 1))).toBe(null);
+  });
+});
+
+/**
+ * ADR 0002's parity claim, carried across the two boundaries an Attempt adds. A committed Attempt
+ * is not a thing the player has to be present for: it resolves through a hidden tab and through
+ * an Absence, under the same `advance` and the same rules.
+ */
+describe("an Attempt resolving whether or not anyone is watching", () => {
+  it.each([
+    { name: "landing", attemptedAt: 0 },
+    { name: "killing the yoyo", attemptedAt: 3.5 },
+  ])("agrees on an Attempt $name however the time is split", ({ attemptedAt }) => {
+    const attempting = attemptTrick(advance(freshSleeper(), attemptedAt));
+
+    const inOneCall = advance(attempting, 12);
+
+    let inPieces = attempting;
+    for (const piece of unevenSplits(12, 331)) inPieces = advance(inPieces, piece);
+
+    let inHalfSeconds = attempting;
+    for (let i = 0; i < 24; i++) inHalfSeconds = advance(inHalfSeconds, 0.5);
+
+    for (const split of [inPieces, inHalfSeconds]) {
+      expect(split.style).toBeCloseTo(inOneCall.style, 10);
+      expect(split.phase).toBe(inOneCall.phase);
+      expect(split.landedTricks).toEqual(inOneCall.landedTricks);
+    }
+  });
+
+  it("resolves a Trick committed to just before the tab was closed", () => {
+    const attempting = attemptTrick(automaticSleeper());
+
+    const returned = advance(attempting, EIGHT_HOURS);
+
+    expect(returned.landedTricks).toEqual(["rock-the-baby"]);
+    expect(returned.attempt).toBe(null);
+  });
+
+  /**
+   * A fatal Attempt crossing an Absence has three boundaries in one delta — the death, the
+   * Rewind, and the automatic re-Throw after it — and the Auto-Thrower carries on from there as
+   * though the yoyo had died of old age, because as far as the Rewind is concerned it has.
+   */
+  it("carries a fatal Attempt through the Rewind and back into an automatic Throw", () => {
+    const doomed = attemptTrick(advance(automaticSleeper(), 3.5));
+
+    const returned = advance(doomed, EIGHT_HOURS);
+    const undisturbed = advance(automaticSleeper(), EIGHT_HOURS);
+
+    expect(returned.landedTricks).toEqual([]);
+    expect(returned.attempt).toBe(null);
+    expect(returned.phase).toBe("Sleeping");
+    // Eight hours on, the whole cost of the gamble is still the tail of the one Throw it was
+    // taken on: less than a single Throw between this yoyo and one that never attempted anything.
+    expect(Math.abs(returned.style - undisturbed.style)).toBeLessThan(2.5);
+    expect(returned.style).toBeGreaterThan(8_000);
+  });
+});
+
 describe("the Sustained Style readout", () => {
   it("is 0.3125 Style a second for an opening Throw", () => {
     // The figure the spec derives by hand for the opening state: 2.5 Style per Throw over an
@@ -1530,8 +1951,10 @@ describe("the shape a save has to carry", () => {
 
     expect(Object.keys(played).sort()).toEqual([
       "activeThrowGear",
+      "attempt",
       "bearingLevel",
       "hasAutoThrower",
+      "landedTricks",
       "lifetimeStyle",
       "phase",
       "phaseElapsed",
@@ -1542,6 +1965,36 @@ describe("the shape a save has to carry", () => {
       "version",
     ]);
     expect(played.activeThrowGear).toEqual({ bearingLevel: 1, rewindSpeedLevel: 1 });
+  });
+
+  /**
+   * The Trick ladder is the first content to arrive since this rule was written down, and it is
+   * the case the rule was written for: a save records that Rock the Baby was landed, never the
+   * ×1.25 that landing it is currently worth. Rebalancing the reward then reprices every save
+   * holding the Trick, rather than leaving old players on the old figure and new players on the
+   * new one with nothing in the game able to tell which is which.
+   *
+   * Sits with the field set above rather than among the behavioural tests for the same reason
+   * that does: a stored multiplier and a derived one agree exactly until the day the constant
+   * moves, so no test of what a player sees can tell them apart.
+   */
+  it("records which Tricks were landed and not what landing them is worth", () => {
+    const landed = advance(attemptTrick(freshSleeper()), 2);
+
+    expect(landed.landedTricks).toEqual(["rock-the-baby"]);
+    expect(sustainedStyle(landed)).toBeCloseTo(sustainedStyle(freshSleeper()) * 1.25, 10);
+  });
+
+  /**
+   * An Attempt is progress through a Trick and not the Spin that progress costs. The drain is the
+   * active Throw's decay rate times the Trick's, and a rebalance moves both — a save holding the
+   * product would come back quoting a difficulty from the game it was written in. It would also
+   * be the one way a Bearing could reach an Attempt already committed to, which ADR 0014 forbids.
+   */
+  it("records how much of a Trick is left to perform and not what performing it drains", () => {
+    const halfway = advance(attemptTrick(freshSleeper()), 0.5);
+
+    expect(halfway.attempt).toEqual({ trickId: "rock-the-baby", remaining: 1 });
   });
 
   /**

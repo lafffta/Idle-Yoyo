@@ -6,7 +6,7 @@ import {
   throwYoyo,
 } from "../core/simulation.js";
 import { App } from "./app.js";
-import { createGameStore } from "./store.js";
+import { createGameStore, type GameStore } from "./store.js";
 import {
   completeThrowCycles,
   restoreAfterAbsence,
@@ -150,6 +150,158 @@ describe("the Gear shop", () => {
     expect(bought).toMatch(/<output[^>]*aria-label="Current Style"[^>]*>0.9<\/output>/);
     expect(bought).toContain("11.5 Style");
     expect(bought).toMatch(/<button[^>]*disabled=""[^>]*>Buy Throw Power<\/button>/);
+  });
+});
+
+/** The 1A Division, as a player meets it on their opening Throw. */
+function trickLadderMarkup(store: GameStore): string {
+  const markup = renderToStaticMarkup(<App store={store} />);
+  const ladder = markup.match(
+    /<section[^>]*aria-labelledby="trick-ladder-heading"[^>]*>[\s\S]*?<\/section>/,
+  )?.[0];
+
+  if (ladder === undefined) throw new Error("expected a 1A Division on the page");
+  return ladder;
+}
+
+describe("the 1A Division", () => {
+  it("shows the whole ladder in order, with only the first Trick actionable", () => {
+    const store = createGameStore({ now: () => 0 });
+
+    const ladder = trickLadderMarkup(store);
+
+    expect(ladder).toContain("1A Division");
+    expect(ladder).toContain(
+      "Attempts drain Spin. Land a Trick to multiply Style permanently. Run out of Spin and the Yoyo dies.",
+    );
+    expect(ladder.indexOf("Rock the Baby")).toBeLessThan(
+      ladder.indexOf("Man on the Flying Trapeze"),
+    );
+    expect(ladder.indexOf("Man on the Flying Trapeze")).toBeLessThan(
+      ladder.indexOf("Brain Twister"),
+    );
+
+    // The later rows say what opens them rather than offering an action that would be refused.
+    expect(ladder).toContain("Land Rock the Baby first");
+    expect(ladder).toContain("Land Man on the Flying Trapeze first");
+    expect(ladder.match(/<button/g)).toHaveLength(1);
+    expect(ladder).toMatch(
+      /<button(?![^>]*disabled)[^>]*>Attempt Rock the Baby<\/button>/,
+    );
+  });
+
+  it("does not advertise Divisions whose progression does not exist", () => {
+    const markup = renderToStaticMarkup(<App store={createGameStore({ now: () => 0 })} />);
+
+    for (const division of ["2A", "3A", "4A", "5A"]) expect(markup).not.toContain(division);
+  });
+
+  it("quotes the duration, the permanent reward and the exact Spin a landing leaves", () => {
+    const store = createGameStore({ now: () => 0 });
+
+    const ladder = trickLadderMarkup(store);
+
+    // An opening Throw has 100 Spin and Rock the Baby costs 45 of it.
+    expect(ladder).toContain("1.5s · ×1.25 Style");
+    expect(ladder).toContain("Lands with 55 Spin still turning.");
+  });
+
+  it("says exactly when a late Attempt would kill the yoyo, and still offers it", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+
+    // 3.5 seconds into a 5-second Sleeper: 30 Spin left, and the Trick drains 30 a second.
+    now = 3_500;
+    store.tick();
+
+    const ladder = trickLadderMarkup(store);
+
+    expect(ladder).toContain("Runs out of Spin after 1s, and the Yoyo dies.");
+    expect(ladder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
+  });
+
+  it("cannot be Attempted while the yoyo is not a Sleeper", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+
+    now = 6_000;
+    store.tick();
+
+    const ladder = trickLadderMarkup(store);
+
+    expect(ladder).toMatch(/<button[^>]*disabled=""[^>]*>Attempt Rock the Baby<\/button>/);
+    expect(ladder).toContain("Available while the yoyo is a Sleeper.");
+  });
+
+  it("shows the committed Attempt as uncancellable while it runs", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+
+    store.attemptTrick();
+    now = 500;
+    store.tick();
+
+    const ladder = trickLadderMarkup(store);
+
+    expect(ladder).toContain("Rock the Baby in progress. An Attempt cannot be cancelled.");
+    expect(ladder).toMatch(/<button[^>]*disabled=""[^>]*>Attempt Rock the Baby<\/button>/);
+  });
+
+  it("records a landed Trick permanently and opens the next row on the same Sleeper", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+
+    store.attemptTrick();
+    now = 1_500;
+    store.tick();
+
+    const ladder = trickLadderMarkup(store);
+
+    expect(ladder).toContain("Landed");
+    expect(ladder).not.toContain("Attempt Rock the Baby");
+    // 55 Spin is not enough for a 100-Spin Trick, so the row opens fatal rather than closed.
+    expect(ladder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
+    expect(ladder).not.toContain("Land Rock the Baby first");
+  });
+
+  it("multiplies the headline Sustained Style the instant the Trick lands", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+
+    expect(renderToStaticMarkup(<App store={store} />)).toMatch(
+      /<output[^>]*aria-label="Sustained Style"[^>]*>0.31<\/output>/,
+    );
+
+    store.attemptTrick();
+    now = 1_500;
+    store.tick();
+
+    expect(renderToStaticMarkup(<App store={store} />)).toMatch(
+      /<output[^>]*aria-label="Sustained Style"[^>]*>0.39<\/output>/,
+    );
+  });
+
+  /**
+   * The Trick's motion is a readout rather than decoration, so it has to be legible to a player
+   * who cannot see it — and under reduced motion, where the swing across the cradle is exactly
+   * what is dropped, the words are what is left. Asserted as an accessible name, never as
+   * drawing commands: what the canvas paints is not the contract.
+   */
+  it("names the Trick being performed on the live Throw Cycle", () => {
+    let now = 0;
+    const store = createGameStore({ now: () => now });
+
+    expect(renderToStaticMarkup(<App store={store} />)).toContain(
+      'aria-label="A yoyo on its string"',
+    );
+
+    store.attemptTrick();
+    now = 500;
+    store.tick();
+
+    expect(renderToStaticMarkup(<App store={store} />)).toContain(
+      'aria-label="Rock the Baby: an Attempt in progress on the Sleeper"',
+    );
   });
 });
 

@@ -511,6 +511,123 @@ h1 {
     rgba(35, 33, 28, 0.64);
 }
 
+.trick-ladder {
+  justify-self: center;
+  width: min(100%, 68rem);
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid rgba(244, 240, 230, 0.12);
+  border-radius: 0.35rem;
+  background: rgba(35, 33, 28, 0.64);
+  box-shadow: 0 2rem 6rem rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+}
+
+.trick-ladder-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 1.25rem;
+}
+
+.trick-ladder-heading .eyebrow {
+  margin-bottom: 0.45rem;
+}
+
+.trick-ladder-heading h2 {
+  color: #f4f0e6;
+  font-size: clamp(1.25rem, 2.5vw, 1.7rem);
+  font-weight: 500;
+}
+
+.trick-ladder-heading p:last-child {
+  max-width: 24rem;
+  margin: 0;
+  color: #8e887d;
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.trick-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.trick-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(244, 240, 230, 0.1);
+  border-radius: 0.25rem;
+  background: rgba(24, 23, 19, 0.55);
+}
+
+.trick-row.is-next {
+  border-color: rgba(222, 118, 75, 0.32);
+}
+
+.trick-row.is-locked {
+  border-color: rgba(244, 240, 230, 0.07);
+}
+
+.trick-copy {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.trick-copy h3 {
+  color: #f4f0e6;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.trick-terms {
+  color: #b8b0a1;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.76rem;
+}
+
+.trick-forecast {
+  min-height: 1.3em;
+  margin: 0;
+  color: #de764b;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.trick-row.is-landed .trick-copy h3 {
+  color: #b8b0a1;
+}
+
+.trick-state {
+  color: #8e887d;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.trick-row.is-landed .trick-state {
+  color: #de764b;
+}
+
+.trick-purchase {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+}
+
+.trick-attempt-button {
+  min-width: 12.5rem;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.7rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+
 .kit-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -665,12 +782,14 @@ h1 {
     flex-direction: column;
   }
 
-  .gear-row {
+  .gear-row,
+  .trick-row {
     grid-template-columns: 1fr;
     gap: 0.85rem;
   }
 
-  .gear-purchase {
+  .gear-purchase,
+  .trick-purchase {
     justify-content: space-between;
   }
 
