@@ -163,10 +163,9 @@ function drawYoyo(
  * it draws comes from `progress`, which is core Attempt state (ADR 0014): the shell runs no
  * second timer, so the picture cannot drift from the simulation resolving it.
  *
- * Drawn for Rock the Baby and for nothing else: landing it opens Man on the Flying Trapeze on the
- * same Sleeper, which now has its own motion below rather than borrowing this one, and drawing a
- * cradle for it would be the wrong Trick performed convincingly — worse than no motion at all.
- * Brain Twister still falls back to the plain string until #69 gives it its own.
+ * Drawn for Rock the Baby and for nothing else: landing it opens Man on the Flying Trapeze, which
+ * has its own motion below rather than borrowing this one, and drawing a cradle for it would be
+ * the wrong Trick performed convincingly — worse than no motion at all.
  */
 function drawCradle(
   context: CanvasRenderingContext2D,
@@ -209,8 +208,7 @@ function swingOffset(progress: number, reducedMotion: boolean): number {
  * different shape and a different rhythm, so the two Tricks read apart even side by side. Every
  * figure it draws comes from `progress`, the same core Attempt state the cradle reads (ADR 0014).
  *
- * Drawn for Man on the Flying Trapeze and for nothing else. Brain Twister still falls back to the
- * plain string until #69 gives it its own.
+ * Drawn for Man on the Flying Trapeze and for nothing else.
  */
 function drawTrapezeBar(context: CanvasRenderingContext2D, hand: Point, yoyo: Point): void {
   const barY = hand.y + 30;
@@ -246,6 +244,62 @@ function trapezeOffset(progress: number, reducedMotion: boolean): Point {
 
   const lean = Math.sin(progress * Math.PI * 2);
   return { x: lean * 52, y: (1 - lean * lean) * 18 };
+}
+
+/**
+ * Brain Twister: the string doubles over on itself and the crossing point slides down from the
+ * hand toward the yoyo as the Attempt proceeds — the rig itself changes shape over the Attempt,
+ * where the cradle only pulses a fixed triangle and the trapeze bar never moves at all. That
+ * descent is drawn straight from `progress`, the same core Attempt state the other two read
+ * (ADR 0014), so a twist that looks half-done is a Trick that is half-done.
+ *
+ * Drawn for Brain Twister and for nothing else, for the same reason the cradle and the bar are:
+ * the earlier two Tricks get their own rig, and a twisted string standing in for either would be
+ * the wrong Trick performed convincingly.
+ */
+function drawTwistedString(
+  context: CanvasRenderingContext2D,
+  hand: Point,
+  yoyo: Point,
+  progress: number,
+): void {
+  const start = { x: hand.x, y: hand.y + 14 };
+  const end = { x: yoyo.x, y: yoyo.y - YOYO_RADIUS + 3 };
+  const cross = { x: start.x, y: start.y + (end.y - start.y) * progress };
+  const spread = 11;
+
+  context.save();
+  context.strokeStyle = "#c7bfae";
+  context.lineWidth = 1.4;
+  context.lineJoin = "round";
+
+  context.beginPath();
+  context.moveTo(start.x - spread, start.y);
+  context.lineTo(cross.x + spread, cross.y);
+  context.lineTo(end.x - spread * 0.4, end.y);
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(start.x + spread, start.y);
+  context.lineTo(cross.x - spread, cross.y);
+  context.lineTo(end.x + spread * 0.4, end.y);
+  context.stroke();
+
+  context.restore();
+}
+
+/**
+ * How the yoyo shivers as the twist tightens around it: a fast, small oscillation rather than a
+ * wide swing, since a Brain Twister is worked in place while the string above it does the
+ * travelling — a different shape of motion from the cradle's three rocks and the trapeze's one
+ * wide pass, not just a faster or slower version of either.
+ *
+ * Under reduced motion it holds still, the same rule as the swing and the pendulum: what goes is
+ * the travel across the screen, and the progress ring left behind still carries the timing.
+ */
+function twistShiver(progress: number, reducedMotion: boolean): number {
+  if (reducedMotion) return 0;
+  return Math.sin(progress * Math.PI * 9) * 9 * (1 - progress * 0.4);
 }
 
 function drawAttemptProgress(
@@ -297,18 +351,22 @@ function drawScene(
   const attempt = activeAttempt(state);
   const rocking = attempt?.trick.id === "rock-the-baby";
   const flying = attempt?.trick.id === "man-on-the-flying-trapeze";
+  const twisting = attempt?.trick.id === "brain-twister";
   const trapeze = flying && attempt !== null ? trapezeOffset(attempt.progress, reducedMotion) : null;
   const yoyo =
     attempt !== null && rocking
       ? { x: resting.x + swingOffset(attempt.progress, reducedMotion), y: resting.y }
       : trapeze !== null
         ? { x: resting.x + trapeze.x, y: resting.y + trapeze.y }
-        : resting;
+        : attempt !== null && twisting
+          ? { x: resting.x + twistShiver(attempt.progress, reducedMotion), y: resting.y }
+          : resting;
   const spinRatio =
     state.phase === "Sleeping" ? clamp(state.spin / Math.max(throwPower(state), 1), 0, 1) : 0;
 
   if (attempt !== null && rocking) drawCradle(context, hand, yoyo, attempt.progress);
   else if (attempt !== null && flying) drawTrapezeBar(context, hand, yoyo);
+  else if (attempt !== null && twisting) drawTwistedString(context, hand, yoyo, attempt.progress);
   else drawString(context, hand, yoyo);
 
   drawHand(context, hand);
