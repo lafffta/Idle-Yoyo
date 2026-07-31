@@ -21,8 +21,12 @@ const absence = (seconds: number): Timeline[number] => ({ kind: "Absence", secon
 
 describe("the printed Report", () => {
   it("says an unattended Absence earned nothing without denying that it happened", () => {
+    // Exactly the third Throw Cycle boundary — the opening cycle plus two ordinary ones — so
+    // the Session closes with the yoyo Ready and no Sleeper left on the string to earn from
+    // during the Absence that follows. Any longer and #71's engaged player reaches the
+    // Auto-Thrower's price before this Session ends, leaving no unattended Absence to print.
     const timeline: Timeline = [
-      session(600),
+      session(23.25),
       absence(28_800),
       session(1_800),
       absence(28_800),
