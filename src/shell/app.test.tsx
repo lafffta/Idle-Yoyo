@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
+  advance,
+  attemptTrick,
   initialState,
   throwYoyo,
 } from "../core/simulation.js";
@@ -97,6 +99,24 @@ describe("returning from an Absence", () => {
     expect(markup).toContain("Your yoyo died when its Spin ran out.");
     expect(markup).toContain("It earned 2.5 Style while you were away");
     expect(markup).toContain("then nothing further without an Auto-Thrower");
+  });
+
+  it("names the Trick a saved Attempt landed while the player was away", () => {
+    const attempting = attemptTrick(throwYoyo(initialState()));
+    const store = restoreAfterAbsence(attempting, 8 * 60 * 60);
+
+    const markup = renderToStaticMarkup(<App store={store} />);
+
+    expect(markup).toContain("It also landed Rock the Baby while you were away.");
+  });
+
+  it("names the Attempt that killed the Yoyo while the player was away", () => {
+    const doomed = attemptTrick(advance(throwYoyo(initialState()), 3.5));
+    const store = restoreAfterAbsence(doomed, 8 * 60 * 60);
+
+    const markup = renderToStaticMarkup(<App store={store} />);
+
+    expect(markup).toContain("Its Attempt at Rock the Baby killed the Yoyo while you were away.");
   });
 
 });

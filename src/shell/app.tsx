@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { formatNumber } from "./format.js";
 import type {
   AbsenceSummary as AbsenceSummaryState,
+  AttemptResolution,
   AutoThrowerOffer,
   GameStore,
   GearOffer,
@@ -117,7 +118,7 @@ function formatAbsenceDuration(seconds: number): string {
   }`;
 }
 
-function absenceExplanation(summary: AbsenceSummaryState): string {
+function outcomeExplanation(summary: AbsenceSummaryState): string {
   const earned = `${formatNumber(summary.styleEarned)} Style`;
 
   switch (summary.outcome) {
@@ -130,6 +131,18 @@ function absenceExplanation(summary: AbsenceSummaryState): string {
     case "stillSleeping":
       return `Your yoyo stayed a Sleeper and earned ${earned} while you were away. Without an Auto-Thrower, it will earn nothing further after its Spin runs out.`;
   }
+}
+
+function attemptResolutionExplanation(resolution: AttemptResolution): string {
+  return resolution.landed
+    ? `It also landed ${resolution.trickName} while you were away.`
+    : `Its Attempt at ${resolution.trickName} killed the Yoyo while you were away.`;
+}
+
+function absenceExplanation(summary: AbsenceSummaryState): string {
+  return summary.attemptResolution === null
+    ? outcomeExplanation(summary)
+    : `${outcomeExplanation(summary)} ${attemptResolutionExplanation(summary.attemptResolution)}`;
 }
 
 function AbsenceSummary({ store }: AppProps) {

@@ -1,4 +1,4 @@
-import type { AttemptPreview, GameState, TrickId } from "../core/simulation.js";
+import type { Attempt, AttemptPreview, GameState, TrickId } from "../core/simulation.js";
 import {
   activeAttempt,
   advance,
@@ -16,6 +16,7 @@ import {
   sustainedStyle,
   throwPowerCost,
   throwYoyo,
+  trickById,
   TRICKS_1A,
 } from "../core/simulation.js";
 import { PROVISIONAL_SHELL } from "./constants.js";
@@ -51,11 +52,37 @@ export type ProjectedNight = {
   withoutAutoThrower: number;
 };
 
+/**
+ * What became of an Attempt that was already in progress when the game was last saved, as the
+ * one restored tick that can resolve it found it. `null` covers both "there was no Attempt to
+ * resolve" and "it is still running" — the summary only ever speaks about a settled outcome.
+ */
+export type AttemptResolution = { trickName: string; landed: boolean };
+
 export type AbsenceSummary = {
   seconds: number;
   styleEarned: number;
   outcome: "autoThrower" | "died" | "alreadyDead" | "stillSleeping";
+  attemptResolution: AttemptResolution | null;
 };
+
+/**
+ * Names what a restored Attempt did, by comparing the Attempt held before the resolving tick
+ * against the landed facts and Attempt state it left behind. Reads only those two facts rather
+ * than re-deriving an outcome, so this can never disagree with what `advance` actually decided.
+ *
+ * `before.trickId` is always a validated `TrickId` by the time it reaches here — either minted by
+ * a fresh `attemptTrick` or accepted by the save layer — so this reads it with `trickById`, the
+ * same trusted lookup `advance` itself uses, rather than the untrusted-string `findTrick`.
+ */
+function resolvedAttempt(before: Attempt | null, after: GameState): AttemptResolution | null {
+  if (before === null) return null;
+
+  const trick = trickById(before.trickId);
+  if (after.landedTricks.includes(before.trickId)) return { trickName: trick.name, landed: true };
+  if (after.attempt === null) return { trickName: trick.name, landed: false };
+  return null;
+}
 
 export type GearId = "throwPower" | "bearing" | "rewindSpeed";
 
@@ -303,6 +330,7 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
     const styleBeforeTick = state.style;
     const hadAutoThrower = state.hasAutoThrower;
     const phaseBeforeTick = state.phase;
+    const attemptBeforeTick = state.attempt;
     replaceState(advance(state, seconds));
     if (hasPendingRestorationTick) {
       if (seconds >= PROVISIONAL_SHELL.meaningfulRestoredAbsenceSeconds) {
@@ -317,6 +345,7 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
           seconds,
           styleEarned: state.style - styleBeforeTick,
           outcome,
+          attemptResolution: resolvedAttempt(attemptBeforeTick, state),
         };
         for (const listener of absenceSummaryListeners) listener();
       }
