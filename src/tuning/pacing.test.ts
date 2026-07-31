@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import type { TrickId } from "../core/simulation.js";
 import type { Purchasable, Report } from "./simulate.js";
 import { simulate } from "./simulate.js";
+import type { Timeline } from "./timeline.js";
 import { CANONICAL_TIMELINE } from "./timeline.js";
 
 /**
@@ -35,6 +37,13 @@ describe("the opening of the game", () => {
     // number every purchase is judged through. Session over Session rather than moment to
     // moment, because Sustained Style dips nowhere within a Session either — it only ever moves
     // when something is bought.
+    //
+    // Non-decreasing rather than strictly climbing, since the engaged player of #71 reaches Gear
+    // levels the earlier player never did: by the run's last Session the Sleeper the Throw Cycle
+    // is built from can outlast the Session itself, and a Session that closes without ever
+    // reaching a Throw Cycle boundary has no shop open to buy anything in — a closed shop rather
+    // than a dead one. The strict claim survives as the one comparison that always has a boundary
+    // to have bought at: the run's very last close against its very first.
     const report = simulate(CANONICAL_TIMELINE);
 
     const closes = report.sessions.map((record) => record.sustainedStyleAtClose);
@@ -42,8 +51,9 @@ describe("the opening of the game", () => {
     expect(closes.length).toBeGreaterThan(1);
     closes.forEach((close, index) => {
       if (index === 0) return;
-      expect(close).toBeGreaterThan(closes[index - 1] ?? Infinity);
+      expect(close).toBeGreaterThanOrEqual(closes[index - 1] ?? Infinity);
     });
+    expect(closes.at(-1)).toBeGreaterThan(closes[0] ?? Infinity);
   });
 
   it("leaves no row of the shop dead", () => {
@@ -133,6 +143,100 @@ describe("the Auto-Thrower", () => {
 
     expect(report.absencesWithAutoThrower.absences).toBeGreaterThan(0);
     expect(report.absencesWithoutAutoThrower.absences).toBe(0);
+  });
+});
+
+/**
+ * Where each row of `Report.tricks` landed, or a failed assertion naming which row and why —
+ * rather than a bare `undefined` a later `.atSeconds` would fail against without saying which
+ * Trick was never landed at all.
+ */
+function landingOf(report: Report, id: TrickId): { readonly atSeconds: number; readonly session: number } {
+  const record = report.tricks.find((trick) => trick.id === id);
+  if (record === undefined || !record.landed) {
+    throw new Error(`${id} never landed against the canonical timeline`);
+  }
+  return record;
+}
+
+/**
+ * Session-only seconds elapsed by the wall-clock instant `atSeconds` — "engaged play" as the plan
+ * means it, since no Session time passes during an Absence. Worked out from the Report's own
+ * Session lengths rather than carried as a separate harness figure, so the guard below is reading
+ * the same facts a designer would.
+ */
+function engagedSecondsBy(timeline: Timeline, atSeconds: number): number {
+  let elapsed = 0;
+  let engaged = 0;
+
+  for (const period of timeline) {
+    if (period.kind === "Session") {
+      engaged += Math.min(Math.max(atSeconds - elapsed, 0), period.seconds);
+    }
+    elapsed += period.seconds;
+    if (elapsed >= atSeconds) break;
+  }
+
+  return engaged;
+}
+
+describe("the 1A ladder", () => {
+  /**
+   * The plan's first pacing role: Rock the Baby "safely lands on the opening Throw before any
+   * Gear purchase." The engaged player Attempts the moment it is safe (#71), so the guard this
+   * file can make is that landing happened before the shop ever sold anything — the ladder's own
+   * threshold, restated as an order rather than a timestamp `constants.ts`'s rebalance would move.
+   */
+  it("lands Rock the Baby before the shop sells anything", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const landing = landingOf(report, "rock-the-baby");
+    const firstPurchaseAt = report.sessions[0]?.purchases[0]?.atSeconds ?? Infinity;
+
+    expect(landing.atSeconds).toBeLessThan(firstPurchaseAt);
+  });
+
+  /**
+   * The plan's second pacing role: Man on the Flying Trapeze "lands before the expected
+   * Auto-Thrower purchase" — the manual opening's own progression, ahead of the moment the game
+   * stops asking the player to Throw by hand at all.
+   */
+  it("lands Man on the Flying Trapeze before the Auto-Thrower", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const landing = landingOf(report, "man-on-the-flying-trapeze");
+    const autoThrower = report.autoThrower;
+    if (!autoThrower.bought) throw new Error("the player never bought an Auto-Thrower");
+
+    expect(landing.atSeconds).toBeLessThan(autoThrower.atSeconds);
+  });
+
+  /**
+   * The plan's third pacing role, restated from `describe("the Auto-Thrower")` above so the whole
+   * ladder's contract lives in one place: automation still arrives inside the first Session.
+   */
+  it("still reaches the Auto-Thrower within the first Session", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    expect(report.autoThrower).toMatchObject({ bought: true, inFirstSession: true });
+  });
+
+  /**
+   * The plan's fourth pacing role: Brain Twister "remains unsafe until after the expected
+   * Auto-Thrower purchase and lands within 30 minutes of engaged play" — the reason automation
+   * does not end active play outright. "Engaged play" is Session time and nothing else: the
+   * player is not Attempting anything while the tab is closed, so the 30-minute budget is spent
+   * only while they are actually there to spend it.
+   */
+  it("lands Brain Twister after the Auto-Thrower and within 30 minutes of engaged play", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const brainTwister = landingOf(report, "brain-twister");
+    const autoThrower = report.autoThrower;
+    if (!autoThrower.bought) throw new Error("the player never bought an Auto-Thrower");
+
+    expect(brainTwister.atSeconds).toBeGreaterThan(autoThrower.atSeconds);
+    expect(engagedSecondsBy(CANONICAL_TIMELINE, brainTwister.atSeconds)).toBeLessThanOrEqual(30 * 60);
   });
 });
 
