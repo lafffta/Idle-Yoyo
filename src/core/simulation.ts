@@ -297,11 +297,16 @@ export function findTrick(id: string): Trick | undefined {
   return TRICKS_1A.find((candidate) => candidate.id === id);
 }
 
-function trickById(id: TrickId): Trick {
+/**
+ * The Trick a validated `TrickId` names — every id that reaches this build's state, whether from
+ * a fresh `attemptTrick` or a save the load layer has already accepted.
+ *
+ * Unreachable through the type: a save can only name a Trick this build still ships, because
+ * the save layer turns away a document naming anything else. Thrown rather than defaulted so
+ * that removing a row from the ladder is a loud change, not a Trick that stops draining Spin.
+ */
+export function trickById(id: TrickId): Trick {
   const trick = findTrick(id);
-  // Unreachable through the type: a save can only name a Trick this build still ships, because
-  // the save layer turns away a document naming anything else. Thrown rather than defaulted so
-  // that removing a row from the ladder is a loud change, not a Trick that stops draining Spin.
   if (trick === undefined) throw new Error(`no such Trick: ${id}`);
   return trick;
 }

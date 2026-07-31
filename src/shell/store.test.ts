@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  advance,
+  attemptTrick,
   autoThrowerCost,
   buyAutoThrower,
   initialState,
@@ -81,11 +83,41 @@ describe("returning from an Absence", () => {
       seconds: 8 * 60 * 60,
       styleEarned: 9_000,
       outcome: "autoThrower",
+      attemptResolution: null,
     });
     expect(store.getAbsenceSummary()?.styleEarned).toBeCloseTo(
       store.getState().style - state.style,
       10,
     );
+  });
+
+  it("names the Trick a saved Attempt landed while the player was away", () => {
+    const attempting = attemptTrick(throwYoyo(initialState()));
+    const store = restoreAfterAbsence(attempting, 8 * 60 * 60);
+
+    expect(store.getAbsenceSummary()?.attemptResolution).toEqual({
+      trickName: "Rock the Baby",
+      landed: true,
+    });
+  });
+
+  it("names the Attempt that killed the Yoyo while the player was away", () => {
+    // Started 3.5s into the Sleeper, where only 30 Spin remains against Rock the Baby's 45,
+    // so the Attempt cannot be sustained (mirrors the core's own fatal-Attempt fixtures).
+    const doomed = attemptTrick(advance(throwYoyo(initialState()), 3.5));
+
+    const store = restoreAfterAbsence(doomed, 8 * 60 * 60);
+
+    expect(store.getAbsenceSummary()?.attemptResolution).toEqual({
+      trickName: "Rock the Baby",
+      landed: false,
+    });
+  });
+
+  it("reports no attempt resolution when nothing was in progress at save time", () => {
+    const store = restoreAfterAbsence(sleeperWithAutoThrower(), 8 * 60 * 60);
+
+    expect(store.getAbsenceSummary()?.attemptResolution).toBeNull();
   });
 
   it("keeps a trivial reload silent instead of reporting a later Session tick", () => {
