@@ -136,6 +136,21 @@ describe("a Session before anything is affordable", () => {
     expect(report.sessions[0]?.styleEarned).toBeCloseTo(total, 10);
   });
 
+  it("declines Man on the Flying Trapeze while even a fresh Throw could not land it", () => {
+    // Its drain is 40 Spin/s for 2.5s — 100 Spin, exactly the whole of an opening Throw — so at
+    // no Gear at all it is fatal from the very first instant of any Sleeper, freshly thrown or
+    // not, and sacrificing one for it would reach nothing a later Sleeper could not reach anyway.
+    // The engaged player of #71 declines it every cycle rather than take that loss for no
+    // strategic benefit, which is exactly what the total above already proves: three ordinary
+    // cycles earning precisely their untouched amount is the signature of a Trick never begun,
+    // not one begun and cut short by a drain the ordinary formula does not know about.
+    const report = simulate([session(23.25)]);
+
+    const motft = report.tricks.find((trick) => trick.id === "man-on-the-flying-trapeze");
+    expect(motft?.landed).toBe(false);
+    expect(report.sessions[0]?.manualThrows).toBe(3);
+  });
+
   it("earns better than Sustained Style when it closes part-way through a Sleeper", () => {
     // 20s is the opening cycle, one ordinary cycle after it, and then 4.75s of a third Sleeper —
     // the front of it, where Spin and so the rate are highest, and none of the Rewind that would

@@ -1,4 +1,4 @@
-import type { Attempt, GameState, Trick, TrickId } from "../core/simulation.js";
+import type { Attempt, GameState, TrickId } from "../core/simulation.js";
 import {
   advance,
   attemptTrick,
@@ -1038,6 +1038,29 @@ function wouldLandFresh(state: GameState): boolean {
   const preview = previewAttempt(fresh);
   return preview !== null && preview.outcome.lands;
 }
+
+/**
+ * **Chaining, and the sacrifice `wouldLandFresh` exists to weigh, do not appear to happen at the
+ * current constants — checked against the canonical timeline and swept across single-Session
+ * timelines from 24s to an hour, and named here rather than left for the next reader to
+ * rediscover.** Rock the Baby always resolves on the opening Throw at no Gear (it is safe from
+ * the very start), so the Sleeper it leaves behind is fixed the instant the run begins and never
+ * has enough Spin left over for Man on the Flying Trapeze regardless of what is bought later. Man
+ * on the Flying Trapeze itself is Attempted the moment its own threshold is first crossed — Gear
+ * bought for `nextTrick` credit stops being credited the instant that Trick lands, and shopping
+ * for Brain Twister's own much higher threshold only starts afterwards — so it is always landed
+ * fresh at the Gear that only just clears it, never at Gear that would also clear Brain Twister on
+ * the same Sleeper. Both Tricks the current ladder chains onto are chained from, in other words,
+ * and the one Trick actually reached by a chain-worthy Sleeper is the one nothing can chain onto.
+ *
+ * The mechanism is real and general — `maybeAttempt` is called again the instant a landing frees
+ * the Sleeper for the next Trick, exactly as it is after a Throw, and the core's own tests already
+ * cover a Sleeper that does have the Spin to carry two Tricks. What is missing is a play pattern
+ * under the *current* ladder and constants that reaches one from a cold start, and manufacturing
+ * one — richer Gear at the moment Man on the Flying Trapeze first becomes reachable, or a fourth
+ * Trick close enough behind a third to chain onto it — is a finding about the ladder rather than
+ * about this function, and is left to whoever picks it up next.
+ */
 
 function gearOf(state: GameState): GearLevels {
   return {

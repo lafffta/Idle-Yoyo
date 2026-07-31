@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TrickId } from "../core/simulation.js";
+import { trickById } from "../core/simulation.js";
 import type { Purchasable, Report } from "./simulate.js";
 import { simulate } from "./simulate.js";
 import type { Timeline } from "./timeline.js";
@@ -183,16 +184,21 @@ function engagedSecondsBy(timeline: Timeline, atSeconds: number): number {
 describe("the 1A ladder", () => {
   /**
    * The plan's first pacing role: Rock the Baby "safely lands on the opening Throw before any
-   * Gear purchase." The engaged player Attempts the moment it is safe (#71), so the guard this
-   * file can make is that landing happened before the shop ever sold anything — the ladder's own
-   * threshold, restated as an order rather than a timestamp `constants.ts`'s rebalance would move.
+   * Gear purchase." The engaged player Attempts the moment it is safe (#71), so an Attempt begun
+   * any later than the very first instant of the run could not still finish inside the Trick's
+   * own duration — landing at or before `durationSeconds` is therefore only possible if the
+   * Attempt itself began at the opening Throw, which is the threshold the plan actually asks for
+   * rather than the weaker "before the shop sells anything" a purchase-ordering check would make.
+   * Read from the ladder itself rather than written as a figure, so a rebalanced duration moves
+   * the guard with it.
    */
-  it("lands Rock the Baby before the shop sells anything", () => {
+  it("lands Rock the Baby on the opening Throw", () => {
     const report = simulate(CANONICAL_TIMELINE);
 
     const landing = landingOf(report, "rock-the-baby");
     const firstPurchaseAt = report.sessions[0]?.purchases[0]?.atSeconds ?? Infinity;
 
+    expect(landing.atSeconds).toBeLessThanOrEqual(trickById("rock-the-baby").durationSeconds);
     expect(landing.atSeconds).toBeLessThan(firstPurchaseAt);
   });
 
