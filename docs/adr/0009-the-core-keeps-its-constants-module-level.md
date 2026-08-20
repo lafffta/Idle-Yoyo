@@ -6,7 +6,7 @@ This is recorded because the tuning harness is the first thing to want otherwise
 
 ## Why
 
-ADR 0008 fixes the core's shape as `advance(state: GameState, seconds: number): GameState`. That signature is named in the ADR, in `CLAUDE.md`, and in the core-loop spec, and every derived readout follows the same pattern of taking a state and nothing else.
+ADR 0008 fixes the core's shape as `advance(state: GameState, seconds: number): GameState`. That signature is named in the ADR, in `AGENTS.md`, and in the core-loop spec, and every derived readout follows the same pattern of taking a state and nothing else.
 
 Threading a constants argument through it is not a local change. It reaches every function in the core, every call site, and every test — and it puts a second parameter on the one signature the whole codebase is organised around, so that a development tool can sweep a value. That is a wide refactor bought for the convenience of a tool that does not exist yet.
 
