@@ -312,15 +312,24 @@ export function trickById(id: TrickId): Trick {
 }
 
 /**
- * The one Trick the player may Attempt: the first on the ladder they have not landed. `null`
- * once the ladder is finished.
- *
- * A linear ladder is the whole gate. ADR 0004 has no declared Gear requirement anywhere — a
- * Trick is out of reach because a weak Throw cannot supply the Spin it costs, and the player
- * finds that out by reading the preview rather than by being refused.
+ * Every Trick the player's landed facts make reachable, whether or not one can be Attempted this
+ * instant. The opening spine yields at most one until #82 teaches this query about Mounts.
  */
-export function nextTrick(state: GameState): Trick | null {
-  return TRICKS_1A.find((trick) => !state.landedTricks.includes(trick.id)) ?? null;
+export function reachableTricks(state: GameState): Trick[] {
+  const next = TRICKS_1A.find((trick) => !state.landedTricks.includes(trick.id)) ?? null;
+  return next === null ? [] : [next];
+}
+
+/**
+ * Every Trick the player may Attempt this instant — at most one until #82 opens the first Mounts.
+ *
+ * ADR 0004 has no declared Gear requirement: a reachable Trick remains Attemptable even when the
+ * preview says the Sleeper cannot sustain it. Action state is also part of the answer, so there is
+ * nothing Attemptable off a live Sleeper or while another Attempt is running.
+ */
+export function attemptableTricks(state: GameState): Trick[] {
+  if (state.phase !== "Sleeping" || state.attempt !== null) return [];
+  return reachableTricks(state);
 }
 
 /**
@@ -338,16 +347,15 @@ function trickMultiplier(state: GameState): number {
 }
 
 /**
- * The Trick the player may begin this instant, or `null` when they may begin none — the yoyo is
- * not spinning, a Trick is already being performed, or the ladder is finished.
+ * The Trick the player may begin this instant, or `null` when they may begin none — there is no
+ * live Sleeper, a Trick is already being performed, or every reachable Trick has landed.
  *
  * One rule, read by both the action and its preview, so that what the player is shown and what
  * the game will accept cannot come apart: a preview exists exactly when `attemptTrick` goes
  * through.
  */
-function attemptableNow(state: GameState): Trick | null {
-  if (state.phase !== "Sleeping" || state.attempt !== null) return null;
-  return nextTrick(state);
+function attemptableNow(state: GameState, trickId: TrickId): Trick | null {
+  return attemptableTricks(state).find((trick) => trick.id === trickId) ?? null;
 }
 
 /**
@@ -383,7 +391,7 @@ function attemptOutcome(state: GameState, trick: Trick, remaining: number): Atte
 }
 
 /**
- * Begin the next Trick on the Sleeper on the string. The one action Tricks have, and the only
+ * Begin the named Trick on the Sleeper on the string. The one action Tricks have, and the only
  * thing the game ever asks the player to do with their hands (ADR 0004).
  *
  * Refused off a live Sleeper, and refused while another Attempt is running: an Attempt cannot be
@@ -395,8 +403,8 @@ function attemptOutcome(state: GameState, trick: Trick, remaining: number): Atte
  * 0004 rests on that: the alternative is a dice roll, and a refusal would delete the trade along
  * with the risk. Costs nothing and moves no time; only `advance` resolves it.
  */
-export function attemptTrick(state: GameState): GameState {
-  const trick = attemptableNow(state);
+export function attemptTrick(state: GameState, trickId: TrickId): GameState {
+  const trick = attemptableNow(state, trickId);
   if (trick === null) return state;
 
   return { ...state, attempt: { trickId: trick.id, remaining: trick.durationSeconds } };
@@ -426,11 +434,11 @@ export type AttemptPreview = {
 };
 
 /**
- * What beginning the next Attempt right now would do, in full, or `null` when there is nothing
- * to attempt — the yoyo is not spinning, a Trick is already running, or the ladder is finished.
+ * What beginning an Attempt on the named Trick right now would do, in full, or `null` when that
+ * Trick is not Attemptable — including without a live Sleeper or while another Attempt runs.
  */
-export function previewAttempt(state: GameState): AttemptPreview | null {
-  const trick = attemptableNow(state);
+export function previewAttempt(state: GameState, trickId: TrickId): AttemptPreview | null {
+  const trick = attemptableNow(state, trickId);
   if (trick === null) return null;
 
   return { trick, outcome: attemptOutcome(state, trick, trick.durationSeconds) };

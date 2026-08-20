@@ -92,7 +92,7 @@ describe("returning from an Absence", () => {
   });
 
   it("names the Trick a saved Attempt landed while the player was away", () => {
-    const attempting = attemptTrick(throwYoyo(initialState()));
+    const attempting = attemptTrick(throwYoyo(initialState()), "rock-the-baby");
     const store = restoreAfterAbsence(attempting, 8 * 60 * 60);
 
     expect(store.getAbsenceSummary()?.attemptResolution).toEqual({
@@ -104,7 +104,7 @@ describe("returning from an Absence", () => {
   it("names the Attempt that killed the Yoyo while the player was away", () => {
     // Started 3.5s into the Sleeper, where only 30 Spin remains against Rock the Baby's 45,
     // so the Attempt cannot be sustained (mirrors the core's own fatal-Attempt fixtures).
-    const doomed = attemptTrick(advance(throwYoyo(initialState()), 3.5));
+    const doomed = attemptTrick(advance(throwYoyo(initialState()), 3.5), "rock-the-baby");
 
     const store = restoreAfterAbsence(doomed, 8 * 60 * 60);
 

@@ -1,6 +1,7 @@
 import type { Attempt, GameState, TrickId } from "../core/simulation.js";
 import {
   advance,
+  attemptableTricks,
   attemptTrick,
   autoThrowerCost,
   bearingCost,
@@ -10,7 +11,6 @@ import {
   buyThrowPower,
   decayRate,
   initialState,
-  nextTrick,
   previewAttempt,
   projectedYield,
   rewindDuration,
@@ -816,8 +816,8 @@ function gearRow(
  * shop would see only the earning-rate rise and never the reason to reach for it.
  */
 function sustainedStyleCreditingNextTrick(state: GameState): number {
-  const trick = nextTrick(state);
-  if (trick === null || !wouldLandFresh(state)) return sustainedStyle(state);
+  const [trick] = attemptableTricks(freshThrow(state));
+  if (trick === undefined || !wouldLandFresh(state, trick.id)) return sustainedStyle(state);
   return sustainedStyle({ ...state, landedTricks: [...state.landedTricks, trick.id] });
 }
 
@@ -1016,11 +1016,14 @@ function attemptBoundarySeconds(state: GameState, attempt: Attempt): number {
 function maybeAttempt(state: GameState): GameState {
   if (state.phase !== "Sleeping" || state.attempt !== null) return state;
 
-  const preview = previewAttempt(state);
-  if (preview === null) return state;
-  if (preview.outcome.lands) return attemptTrick(state);
+  const [trick] = attemptableTricks(state);
+  if (trick === undefined) return state;
 
-  return wouldLandFresh(state) ? attemptTrick(state) : state;
+  const preview = previewAttempt(state, trick.id);
+  if (preview === null) return state;
+  if (preview.outcome.lands) return attemptTrick(state, trick.id);
+
+  return wouldLandFresh(state, trick.id) ? attemptTrick(state, trick.id) : state;
 }
 
 /**
@@ -1033,9 +1036,12 @@ function maybeAttempt(state: GameState): GameState {
  * has already spent some of its Spin — chaining onto a second Trick, say — can fail here purely
  * for want of the headroom a fresh one starts with, which a fresh Throw does not lack.
  */
-function wouldLandFresh(state: GameState): boolean {
-  const fresh = throwYoyo({ ...state, phase: "Ready" });
-  const preview = previewAttempt(fresh);
+function freshThrow(state: GameState): GameState {
+  return throwYoyo({ ...state, phase: "Ready" });
+}
+
+function wouldLandFresh(state: GameState, trickId: TrickId): boolean {
+  const preview = previewAttempt(freshThrow(state), trickId);
   return preview !== null && preview.outcome.lands;
 }
 
@@ -1047,7 +1053,7 @@ function wouldLandFresh(state: GameState): boolean {
  * the very start), so the Sleeper it leaves behind is fixed the instant the run begins and never
  * has enough Spin left over for Man on the Flying Trapeze regardless of what is bought later. Man
  * on the Flying Trapeze itself is Attempted the moment its own threshold is first crossed — Gear
- * bought for `nextTrick` credit stops being credited the instant that Trick lands, and shopping
+ * bought for Attemptable-Trick credit stops being credited the instant that Trick lands, and shopping
  * for Brain Twister's own much higher threshold only starts afterwards — so it is always landed
  * fresh at the Gear that only just clears it, never at Gear that would also clear Brain Twister on
  * the same Sleeper. Both Tricks the current ladder chains onto are chained from, in other words,
