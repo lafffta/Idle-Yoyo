@@ -86,7 +86,7 @@ _"Machine"_: prose only, as the common noun this definition itself uses. Identif
 ## Tricks
 
 **Trick**:
-A named manoeuvre performed during a Sleeper. The first Land teaches it and multiplies Style permanently, online and offline alike, surviving every Retire. Every Land after that Performs it.
+A named manoeuvre performed during a Sleeper. Landing one for the first time multiplies Style permanently, online and offline alike, and survives every Retire.
 _Avoid_: Skill, move, combo, ability, perk
 
 **Attempt**:
@@ -94,15 +94,15 @@ Starting a Trick on a live Sleeper. Drains Spin for the Trick's duration; the ou
 _Avoid_: Try, activate, cast, roll
 
 **Land**:
-To finish an Attempt with Spin still remaining. An Attempt whose Spin runs out instead produces a Dead Yoyo early and pays nothing.
+To finish an Attempt with Spin still remaining, learning the Trick. An Attempt whose Spin runs out instead produces a Dead Yoyo early and teaches nothing.
 _Avoid_: Complete, succeed, unlock, acquire
 
-**Perform**:
-To Land a Trick already learned. Teaches nothing and pays Style at once, converting the Spin it drains at a premium over the rate that Spin would have earned by decaying (ADR 0015). May be done as often as Spin allows, and is never automated (ADR 0016).
-_Avoid_: Repeat, replay, redo, grind, farm, spam. The genre reaches for _grind_ and _farm_, and both frame the active layer as a chore — which is the failure #72 found. If the docs call it grinding, someone will build it as grinding.
+**Mount**:
+The string configuration a yoyo is in, determining which Tricks are reachable from it.
+_Avoid_: Branch, path, tree, node
 
 **Division**:
-A family of Tricks, named for the real competition divisions: 1A, 2A, 3A, 4A, 5A. Each Division is its own linear ladder, opened by reaching a given Yoyo.
+A family of Tricks reached through Mounts, named for the real competition divisions: 1A, 2A, 3A, 4A, 5A. Each Division is opened by reaching a given Yoyo.
 _Avoid_: Style (taken by the currency), category, branch, tier
 
 **Structural Trick**:

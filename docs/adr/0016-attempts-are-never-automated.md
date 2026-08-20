@@ -1,5 +1,9 @@
 # Attempts are never automated
 
+## Amendment: Performances were superseded
+
+ADR 0017 supersedes the repeatable Performance design in ADR 0015. The standing rule in this ADR survives: Attempts remain player-initiated and are never automated. The presence-bonus analysis below is retained as the reason for the original decision, but it no longer governs the active layer because successful Attempts Land new content rather than pay rate.
+
 No Kit, no Gear and no future machine ever performs a Trick on the player's behalf. Attempting is the one thing in the game that stays manual forever.
 
 This is a standing rule rather than a description of the current build, and it is written down because the game's own internal logic argues for the opposite. ADR 0006 makes automation the thing Kit does — "automation is a one-way door" — and `CONTEXT.md` says of the Auto-Thrower that "owning one is what makes the game idle rather than active". A Kit item that Attempted for you would look entirely consistent with both. It would also be a mistake, and one that would look like a natural extension right up until it shipped.

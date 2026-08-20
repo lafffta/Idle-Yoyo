@@ -1,3 +1,7 @@
+---
+status: superseded by ADR 0017
+---
+
 # Landed Tricks are performed for Style
 
 A Trick is learned once and performed forever. The first Land teaches it and multiplies Style permanently, exactly as ADR 0004 describes. Every Land after that is a **Performance**: it teaches nothing and pays Style immediately, converting the Spin it drains at a better rate than letting that Spin decay on its own.

@@ -10,7 +10,7 @@ An Attempt drains Spin at a high rate for the Trick's duration. Survive to the e
 
 There is no purchase price and no dice roll. The outcome is a function of current Spin, the Bearing, and the Trick's cost — all of it known at the moment of the Attempt, all of it displayable. A player who attempts a Trick they cannot sustain has chosen to gamble the tail of a Sleeper, not been unlucky.
 
-This makes the access gate implicit rather than declared: harder Tricks simply cost more Spin than a weak Throw can supply. Throw Power therefore does double duty — it sets the earning ceiling *and* it is the key to the content ladder. That second job is what justifies its unbounded curve, which otherwise buys nothing but a bigger number.
+This makes the access gate implicit rather than declared: harder Tricks simply cost more Spin than a weak Throw can supply. Throw Power therefore does double duty — it sets the earning ceiling *and* it makes more Tricks reachable. That second job is what justifies its unbounded curve, which otherwise buys nothing but a bigger number.
 
 ## Considered Options
 
@@ -25,7 +25,7 @@ The pre-Auto-Thrower stretch of the game gains a reason to exist beyond tutorial
 
 Tricks are permanent and Gear is not (ADR 0005), which creates a hazard: any Trick that neutralises a Gear axis kills that axis on every subsequent run, not just the current one. ADR 0003 carries the resulting constraint on Structural Tricks.
 
-The cost is that a player can stall by never attempting anything. Someone who buys Gear forever and never risks a Sleeper will watch their Sustained Style flatten with no visible explanation, because the missing multiplier is not in the shop they are looking at. The Trick ladder must be as prominent as the shop, and the first Attempt must be nearly free to reach.
+The cost is that a player can stall by never attempting anything. Someone who buys Gear forever and never risks a Sleeper will watch their Sustained Style flatten with no visible explanation, because the missing multiplier is not in the shop they are looking at. The Division must be as prominent as the shop, and the first Attempt must be nearly free to reach.
 
 ## Amendment: the parity rejection was too broad
 
@@ -38,3 +38,9 @@ What this rejection was really reaching for was *magnitude* — whether the game
 **The claim in Consequences that Attempts give the pre-Auto-Thrower stretch "an actual decision to make" was falsified.** The human playtest at #72 found that stretch boring, and found it boring *while two of the three Tricks were on offer throughout it*. One-shot Attempts are two events in forty-five Throw Cycles, which is not a decision the loop is made of. The hazard this ADR names two paragraphs above — that a player can stall by never attempting anything — turned out to have a companion it did not anticipate: a player who attempts everything available also runs out, and does so 7m 44s into a 1h 35m run.
 
 The mechanism this ADR built was sound; what was wrong was believing three of them were enough. Nothing in the deterministic, previewable, non-random Attempt needed changing, and #72 confirmed players read it exactly as intended — a lost Throw was reported as the player's own mistake rather than as bad luck. ADR 0015 keeps all of that and makes it repeatable.
+
+## Amendment: Mounts replace Performances
+
+The Performance answer in the previous amendment did not survive the design work recorded in #79. ADR 0017 supersedes ADR 0015: landed Tricks remain permanent, non-repeatable content, while Mounts open the Division so that several unlanded Tricks can be reachable at once.
+
+The earlier diagnosis still stands. A linear ladder combined with an exact preview offers no choice, and a short ladder empties too early. What changes is the answer: attention continues to acquire content rather than rate, and successive runs Land different Tricks instead of repeating the same ones for Style.
