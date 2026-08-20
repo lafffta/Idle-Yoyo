@@ -10,7 +10,7 @@ An Attempt drains Spin at a high rate for the Trick's duration. Survive to the e
 
 There is no purchase price and no dice roll. The outcome is a function of current Spin, the Bearing, and the Trick's cost — all of it known at the moment of the Attempt, all of it displayable. A player who attempts a Trick they cannot sustain has chosen to gamble the tail of a Sleeper, not been unlucky.
 
-This makes the access gate implicit rather than declared: harder Tricks simply cost more Spin than a weak Throw can supply. Throw Power therefore does double duty — it sets the earning ceiling *and* it is the key to the content ladder. That second job is what justifies its unbounded curve, which otherwise buys nothing but a bigger number.
+This makes the access gate implicit rather than declared: harder Tricks simply cost more Spin than a weak Throw can supply. Throw Power therefore does double duty — it sets the earning ceiling *and* it makes more Tricks reachable. That second job is what justifies its unbounded curve, which otherwise buys nothing but a bigger number.
 
 ## Considered Options
 
@@ -25,4 +25,4 @@ The pre-Auto-Thrower stretch of the game gains a reason to exist beyond tutorial
 
 Tricks are permanent and Gear is not (ADR 0005), which creates a hazard: any Trick that neutralises a Gear axis kills that axis on every subsequent run, not just the current one. ADR 0003 carries the resulting constraint on Structural Tricks.
 
-The cost is that a player can stall by never attempting anything. Someone who buys Gear forever and never risks a Sleeper will watch their Sustained Style flatten with no visible explanation, because the missing multiplier is not in the shop they are looking at. The Trick ladder must be as prominent as the shop, and the first Attempt must be nearly free to reach.
+The cost is that a player can stall by never attempting anything. Someone who buys Gear forever and never risks a Sleeper will watch their Sustained Style flatten with no visible explanation, because the missing multiplier is not in the shop they are looking at. The Division must be as prominent as the shop, and the first Attempt must be nearly free to reach.

@@ -97,8 +97,12 @@ _Avoid_: Try, activate, cast, roll
 To finish an Attempt with Spin still remaining, learning the Trick. An Attempt whose Spin runs out instead produces a Dead Yoyo early and teaches nothing.
 _Avoid_: Complete, succeed, unlock, acquire
 
+**Mount**:
+The string configuration a yoyo is in, determining which Tricks are reachable from it.
+_Avoid_: Branch, path, tree, node
+
 **Division**:
-A family of Tricks, named for the real competition divisions: 1A, 2A, 3A, 4A, 5A. Each Division is its own linear ladder, opened by reaching a given Yoyo.
+A family of Tricks reached through Mounts, named for the real competition divisions: 1A, 2A, 3A, 4A, 5A. Each Division is opened by reaching a given Yoyo.
 _Avoid_: Style (taken by the currency), category, branch, tier
 
 **Structural Trick**:
