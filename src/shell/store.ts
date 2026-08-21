@@ -2,6 +2,7 @@ import type { Attempt, AttemptPreview, GameState, TrickId } from "../core/simula
 import {
   activeAttempt,
   advance,
+  attemptableTricks,
   attemptTrick as attemptTrickInCore,
   autoThrowerCost,
   bearingCost,
@@ -10,8 +11,8 @@ import {
   buyRewindSpeed,
   buyThrowPower,
   initialState,
-  nextTrick,
   previewAttempt,
+  reachableTricks,
   rewindSpeedCost,
   sustainedStyle,
   throwPowerCost,
@@ -162,8 +163,9 @@ export type TrickLadder = {
 };
 
 function trickLadder(state: GameState): TrickLadder {
-  const next = nextTrick(state);
-  const preview = previewAttempt(state);
+  const [next] = reachableTricks(state);
+  const [attemptable] = attemptableTricks(state);
+  const preview = attemptable === undefined ? null : previewAttempt(state, attemptable.id);
   const performing = activeAttempt(state);
 
   return {
@@ -234,9 +236,9 @@ export type GameStore = {
   buyGear: (gear: GearId) => void;
   getTrickLadder: () => TrickLadder;
   subscribeToTrickLadder: (listener: () => void) => () => void;
-  /** The exact outcome of Attempting right now, read live rather than subscribed. */
-  getAttemptForecast: () => AttemptPreview | null;
-  attemptTrick: () => void;
+  /** The exact outcome of Attempting the named Trick now, read live rather than subscribed. */
+  getAttemptForecast: (trickId: TrickId) => AttemptPreview | null;
+  attemptTrick: (trickId: TrickId) => void;
   tick: () => void;
   throwYoyo: () => void;
   isThrowAvailable: () => boolean;
@@ -407,8 +409,8 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
       trickLadderListeners.add(listener);
       return () => trickLadderListeners.delete(listener);
     },
-    getAttemptForecast: () => previewAttempt(state),
-    attemptTrick: () => commit(attemptTrickInCore(state)),
+    getAttemptForecast: (trickId) => previewAttempt(state, trickId),
+    attemptTrick: (trickId) => commit(attemptTrickInCore(state, trickId)),
     tick: () => {
       tickAt(now());
     },

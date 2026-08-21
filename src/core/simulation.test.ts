@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { GameState } from "./simulation.js";
+import type { AttemptPreview, GameState } from "./simulation.js";
 import {
   activeAttempt,
   advance,
-  attemptTrick,
+  attemptableTricks,
+  attemptTrick as attemptNamedTrick,
   autoThrowerCost,
   bearingCost,
   buyAutoThrower,
@@ -13,8 +14,7 @@ import {
   buyThrowPower,
   currentStyleRate,
   initialState,
-  nextTrick,
-  previewAttempt,
+  previewAttempt as previewNamedAttempt,
   projectedYield,
   rewindDuration,
   rewindSpeedCost,
@@ -27,6 +27,18 @@ import {
 /** A Sleeper in progress, one Throw old, with the provisional opening stats. */
 function freshSleeper() {
   return throwYoyo(initialState());
+}
+
+/** The opening spine's only live choice until #82, named explicitly at the public Attempt seam. */
+function attemptTrick(state: GameState): GameState {
+  const [trick] = attemptableTricks(state);
+  return trick === undefined ? state : attemptNamedTrick(state, trick.id);
+}
+
+/** The opening spine's only live preview until #82, named explicitly at the public Attempt seam. */
+function previewAttempt(state: GameState): AttemptPreview | null {
+  const [trick] = attemptableTricks(state);
+  return trick === undefined ? null : previewNamedAttempt(state, trick.id);
 }
 
 /** The same Sleeper with an Auto-Thrower owned, so the cycle turns without a player. */
@@ -1175,6 +1187,26 @@ describe("coming back from eight hours away without an Auto-Thrower", () => {
  * Throw, from a yoyo with nothing bought.
  */
 describe("Attempting a Trick", () => {
+  it("offers Rock the Baby as the only Trick Attemptable on the opening Sleeper", () => {
+    expect(attemptableTricks(freshSleeper()).map((trick) => trick.id)).toEqual(["rock-the-baby"]);
+  });
+
+  it("refuses a named Trick further up the spine", () => {
+    const sleeper = freshSleeper();
+
+    expect(attemptNamedTrick(sleeper, "man-on-the-flying-trapeze")).toEqual(sleeper);
+  });
+
+  it("refuses a named Trick already landed, in both the preview and the action", () => {
+    const afterRockTheBaby = advance(
+      attemptNamedTrick(freshSleeper(), "rock-the-baby"),
+      1.5,
+    );
+
+    expect(previewNamedAttempt(afterRockTheBaby, "rock-the-baby")).toBe(null);
+    expect(activeAttempt(attemptNamedTrick(afterRockTheBaby, "rock-the-baby"))).toBe(null);
+  });
+
   it("lands Rock the Baby on the opening Throw of a yoyo with no Gear at all", () => {
     const landed = advance(attemptTrick(freshSleeper()), 1.5);
 
@@ -1254,8 +1286,8 @@ describe("Attempting a Trick", () => {
   it("moves on to the next Trick once one is landed, rather than offering it again", () => {
     const landed = advance(attemptTrick(freshSleeper()), 1.5);
 
-    expect(nextTrick(freshSleeper())?.name).toBe("Rock the Baby");
-    expect(nextTrick(landed)?.name).toBe("Man on the Flying Trapeze");
+    expect(attemptableTricks(freshSleeper())[0]?.name).toBe("Rock the Baby");
+    expect(attemptableTricks(landed)[0]?.name).toBe("Man on the Flying Trapeze");
   });
 
   it("shows the 1A Division as three Tricks in the order they must be landed in", () => {
@@ -1342,12 +1374,12 @@ describe("chaining Man on the Flying Trapeze onto a landed Rock the Baby", () =>
 
     const bothLanded = advance(attemptTrick(advance(attemptTrick(geared), 1.5)), 2.5);
 
-    expect(nextTrick(bothLanded)?.name).toBe("Brain Twister");
+    expect(attemptableTricks(bothLanded)[0]?.name).toBe("Brain Twister");
   });
 
   /**
-   * A landed Trick is a permanent completion record: the next commitment reaches past it for
-   * Brain Twister, and landing that does nothing to the record already made of the row before it.
+   * A landed Trick is a permanent completion record: the next commitment reaches Brain Twister,
+   * and landing that does nothing to the record already made of the row before it.
    */
   it("cannot be Attempted again once landed", () => {
     const geared = throwYoyo(afterBuyingThrowPower(5));
@@ -1379,7 +1411,7 @@ describe("chaining Man on the Flying Trapeze onto a landed Rock the Baby", () =>
 
 /**
  * #69: Brain Twister completes the 1A Division. Nothing about offering, chaining, resolving or
- * compounding it is new — #67 and #68 already wrote `nextTrick`, `attemptTrick`, `previewAttempt`
+ * compounding it is new — #67 and #68 already wrote the Attempt query, action and preview
  * and `advance` generically over the whole `TRICKS_1A` ladder — so what follows is proof of that
  * for the third row specifically, at its own duration and drain, rather than new machinery.
  */
@@ -1411,7 +1443,7 @@ describe("completing the ladder with Brain Twister", () => {
     const failed = advance(attemptTrick(landedRockAndTrapeze()), 4);
     const woundAndThrown = throwYoyo(advance(failed, rewindDuration(failed)));
 
-    expect(nextTrick(woundAndThrown)?.name).toBe("Brain Twister");
+    expect(attemptableTricks(woundAndThrown)[0]?.name).toBe("Brain Twister");
     expect(previewAttempt(woundAndThrown)?.outcome.lands).toBe(false);
   });
 
@@ -1437,7 +1469,7 @@ describe("completing the ladder with Brain Twister", () => {
     expect(sustainedStyle(allLanded)).toBeCloseTo(before * 1.25 * 1.5 * 2, 10);
 
     // Nothing left to offer: the ladder is finished, not merely quiet between rows.
-    expect(nextTrick(allLanded)).toBe(null);
+    expect(attemptableTricks(allLanded)).toEqual([]);
     expect(previewAttempt(allLanded)).toBe(null);
     expect(attemptTrick(allLanded)).toEqual(allLanded);
   });
@@ -1544,7 +1576,7 @@ describe("an Attempt the Sleeper cannot sustain", () => {
 
     const thrownAgain = throwYoyo(advance(dead, 3));
 
-    expect(nextTrick(thrownAgain)?.name).toBe("Rock the Baby");
+    expect(attemptableTricks(thrownAgain)[0]?.name).toBe("Rock the Baby");
     expect(advance(attemptTrick(thrownAgain), 1.5).landedTricks).toEqual(["rock-the-baby"]);
   });
 
@@ -1616,6 +1648,10 @@ describe("what landing a Trick is worth", () => {
  * against the arithmetic that produced them.
  */
 describe("previewing an Attempt before committing to it", () => {
+  it("refuses to preview a Trick further up the spine", () => {
+    expect(previewNamedAttempt(freshSleeper(), "man-on-the-flying-trapeze")).toBe(null);
+  });
+
   it("names the Trick, how long it takes and what landing it pays, before it is begun", () => {
     const preview = previewAttempt(freshSleeper());
 

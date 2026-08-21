@@ -164,7 +164,7 @@ describe("a save written before there were any Tricks", () => {
     const loaded = deserializeSave(version2Document());
     if (!loaded) throw new Error("expected the version 2 save to load");
 
-    const landed = advance(attemptTrick(loaded.state), 1.5);
+    const landed = advance(attemptTrick(loaded.state, "rock-the-baby"), 1.5);
 
     expect(landed.landedTricks).toEqual(["rock-the-baby"]);
     expect(landed.style).toBeGreaterThan(loaded.state.style);
@@ -173,7 +173,7 @@ describe("a save written before there were any Tricks", () => {
 
 describe("a saved Trick", () => {
   it("round-trips a landed ladder and an Attempt in progress", () => {
-    const attempting = advance(attemptTrick(throwYoyo(initialState())), 1.7);
+    const attempting = advance(attemptTrick(throwYoyo(initialState()), "rock-the-baby"), 1.7);
     const saved = { savedAt: 12_345, state: attempting };
 
     expect(attempting.landedTricks).toEqual(["rock-the-baby"]);
@@ -182,7 +182,10 @@ describe("a saved Trick", () => {
 
     // A second Trick, committed to and half performed, which is the state a tab closed mid
     // Attempt writes out.
-    const midAttempt = advance(attemptTrick({ ...attempting, spin: 400 }), 1);
+    const midAttempt = advance(
+      attemptTrick({ ...attempting, spin: 400 }, "man-on-the-flying-trapeze"),
+      1,
+    );
     expect(midAttempt.attempt).not.toBe(null);
     expect(deserializeSave(serializeSave({ savedAt: 12_345, state: midAttempt }))).toEqual({
       savedAt: 12_345,

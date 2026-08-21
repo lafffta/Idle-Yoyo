@@ -102,7 +102,7 @@ describe("returning from an Absence", () => {
   });
 
   it("names the Trick a saved Attempt landed while the player was away", () => {
-    const attempting = attemptTrick(throwYoyo(initialState()));
+    const attempting = attemptTrick(throwYoyo(initialState()), "rock-the-baby");
     const store = restoreAfterAbsence(attempting, 8 * 60 * 60);
 
     const markup = renderToStaticMarkup(<App store={store} />);
@@ -111,7 +111,7 @@ describe("returning from an Absence", () => {
   });
 
   it("names the Attempt that killed the Yoyo while the player was away", () => {
-    const doomed = attemptTrick(advance(throwYoyo(initialState()), 3.5));
+    const doomed = attemptTrick(advance(throwYoyo(initialState()), 3.5), "rock-the-baby");
     const store = restoreAfterAbsence(doomed, 8 * 60 * 60);
 
     const markup = renderToStaticMarkup(<App store={store} />);
@@ -258,7 +258,7 @@ describe("the 1A Division", () => {
     let now = 0;
     const store = createGameStore({ now: () => now });
 
-    store.attemptTrick();
+    store.attemptTrick("rock-the-baby");
     now = 500;
     store.tick();
 
@@ -272,7 +272,7 @@ describe("the 1A Division", () => {
     let now = 0;
     const store = createGameStore({ now: () => now });
 
-    store.attemptTrick();
+    store.attemptTrick("rock-the-baby");
     now = 1_500;
     store.tick();
 
@@ -293,7 +293,7 @@ describe("the 1A Division", () => {
       /<output[^>]*aria-label="Sustained Style"[^>]*>0.31<\/output>/,
     );
 
-    store.attemptTrick();
+    store.attemptTrick("rock-the-baby");
     now = 1_500;
     store.tick();
 
@@ -316,7 +316,7 @@ describe("the 1A Division", () => {
       'aria-label="A yoyo on its string"',
     );
 
-    store.attemptTrick();
+    store.attemptTrick("rock-the-baby");
     now = 500;
     store.tick();
 
@@ -337,7 +337,7 @@ describe("the 1A Division", () => {
       restored: { tickedAt: now, state: gearedFreshSleeper(5) },
     });
 
-    store.attemptTrick();
+    store.attemptTrick("rock-the-baby");
     now = 1_500;
     store.tick();
 
@@ -348,7 +348,7 @@ describe("the 1A Division", () => {
     expect(afterRockTheBaby).not.toContain("Land Rock the Baby first");
     expect(afterRockTheBaby.match(/<button/g)).toHaveLength(1);
 
-    store.attemptTrick();
+    store.attemptTrick("man-on-the-flying-trapeze");
 
     now = 2_500;
     store.tick();
@@ -384,10 +384,10 @@ describe("the 1A Division", () => {
       restored: { tickedAt: now, state: gearedFreshSleeper(15) },
     });
 
-    store.attemptTrick();
+    store.attemptTrick("rock-the-baby");
     now = 1_500;
     store.tick();
-    store.attemptTrick();
+    store.attemptTrick("man-on-the-flying-trapeze");
     now = 4_000;
     store.tick();
 
@@ -398,7 +398,7 @@ describe("the 1A Division", () => {
       /<button(?![^>]*disabled)[^>]*>Attempt Brain Twister<\/button>/,
     );
 
-    store.attemptTrick();
+    store.attemptTrick("brain-twister");
     now = 4_500;
     store.tick();
     expect(renderToStaticMarkup(<App store={store} />)).toContain(
@@ -430,14 +430,14 @@ describe("the 1A Division", () => {
       restored: { tickedAt: now, state: gearedFreshSleeper(5) },
     });
 
-    store.attemptTrick();
+    store.attemptTrick("rock-the-baby");
     now = 1_500;
     store.tick();
-    store.attemptTrick();
+    store.attemptTrick("man-on-the-flying-trapeze");
     now = 4_000;
     store.tick();
 
-    store.attemptTrick();
+    store.attemptTrick("brain-twister");
     // 55 Spin at Brain Twister's 50-a-second drain: dead 1.1s in, well inside its 4-second Attempt.
     now = 5_100;
     store.tick();

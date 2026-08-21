@@ -236,8 +236,8 @@ function GearShop({ shop, store }: { shop: GearShopState; store: GameStore }) {
   );
 }
 
-function attemptForecastCopy(store: GameStore): string {
-  const forecast = store.getAttemptForecast();
+function attemptForecastCopy(store: GameStore, trickId: TrickRowState["id"]): string {
+  const forecast = store.getAttemptForecast(trickId);
   if (forecast === null) return ATTEMPT_WAITING_COPY;
 
   // Exact, never hedged: linear decay makes the whole Attempt knowable before it begins, and
@@ -252,24 +252,24 @@ function attemptForecastCopy(store: GameStore): string {
  * than re-rendering the ladder sixty times a second — the Style balance is kept live the same
  * way. The frame loop reads the simulation; it never advances it.
  */
-function AttemptForecast({ store }: AppProps) {
+function AttemptForecast({ store, trickId }: AppProps & { trickId: TrickRowState["id"] }) {
   const forecast = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     let frame: number;
 
     const redraw = () => {
-      if (forecast.current) forecast.current.textContent = attemptForecastCopy(store);
+      if (forecast.current) forecast.current.textContent = attemptForecastCopy(store, trickId);
       frame = requestAnimationFrame(redraw);
     };
 
     frame = requestAnimationFrame(redraw);
     return () => cancelAnimationFrame(frame);
-  }, [store]);
+  }, [store, trickId]);
 
   return (
     <p ref={forecast} className="trick-forecast">
-      {attemptForecastCopy(store)}
+      {attemptForecastCopy(store, trickId)}
     </p>
   );
 }
@@ -297,7 +297,9 @@ function TrickRow({
             {ladder.attempting} in progress. An Attempt cannot be cancelled.
           </p>
         ) : null}
-        {isNext && ladder.attempting === null ? <AttemptForecast store={store} /> : null}
+        {isNext && ladder.attempting === null ? (
+          <AttemptForecast store={store} trickId={row.id} />
+        ) : null}
       </div>
 
       {isNext ? (
@@ -306,7 +308,7 @@ function TrickRow({
             className="action-button trick-attempt-button"
             type="button"
             disabled={!ladder.attemptable}
-            onClick={store.attemptTrick}
+            onClick={() => store.attemptTrick(row.id)}
           >
             {/* Never refused for being fatal: the player has been shown the cost (ADR 0004). */}
             {ladder.lands === false ? "Attempt anyway" : `Attempt ${row.name}`}
