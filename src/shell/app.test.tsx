@@ -110,6 +110,15 @@ describe("returning from an Absence", () => {
     expect(markup).toContain("It also landed Rock the Baby while you were away.");
   });
 
+  it("names Eli Hops when the Trapeze Mount lands while the player is away", () => {
+    const attempting = attemptTrick(gearedFreshSleeper(5), "eli-hops");
+    const store = restoreAfterAbsence(attempting, 8 * 60 * 60);
+
+    const markup = renderToStaticMarkup(<App store={store} />);
+
+    expect(markup).toContain("It also landed Eli Hops while you were away.");
+  });
+
   it("names the Attempt that killed the Yoyo while the player was away", () => {
     const doomed = attemptTrick(advance(throwYoyo(initialState()), 3.5), "rock-the-baby");
     const store = restoreAfterAbsence(doomed, 8 * 60 * 60);
@@ -118,7 +127,6 @@ describe("returning from an Absence", () => {
 
     expect(markup).toContain("Its Attempt at Rock the Baby killed the Yoyo while you were away.");
   });
-
 });
 
 describe("the Gear shop", () => {
@@ -175,10 +183,10 @@ describe("the Gear shop", () => {
 });
 
 /** The 1A Division, as a player meets it on their opening Throw. */
-function trickLadderMarkup(store: GameStore): string {
+function trickDivisionMarkup(store: GameStore): string {
   const markup = renderToStaticMarkup(<App store={store} />);
   const ladder = markup.match(
-    /<section[^>]*aria-labelledby="trick-ladder-heading"[^>]*>[\s\S]*?<\/section>/,
+    /<section[^>]*aria-labelledby="trick-division-heading"[^>]*>[\s\S]*?<\/section>/,
   )?.[0];
 
   if (ladder === undefined) throw new Error("expected a 1A Division on the page");
@@ -186,14 +194,16 @@ function trickLadderMarkup(store: GameStore): string {
 }
 
 describe("the 1A Division", () => {
-  it("shows the whole ladder in order, with only the first Trick actionable", () => {
+  it("shows the ordered spine and Trapeze Mount with both opening Tricks actionable", () => {
     const store = createGameStore({ now: () => 0 });
 
-    const ladder = trickLadderMarkup(store);
+    const ladder = trickDivisionMarkup(store);
 
     expect(ladder).toContain("1A Division");
+    expect(ladder).toContain("Spine");
+    expect(ladder).toContain("Trapeze Mount");
     expect(ladder).toContain(
-      "Attempts drain Spin. Land a Trick to multiply Style permanently. Run out of Spin and the Yoyo dies.",
+      "Attempts drain Spin. Landing a Trick changes every Throw after it. Run out of Spin and the Yoyo dies.",
     );
     expect(ladder.indexOf("Rock the Baby")).toBeLessThan(
       ladder.indexOf("Man on the Flying Trapeze"),
@@ -201,14 +211,20 @@ describe("the 1A Division", () => {
     expect(ladder.indexOf("Man on the Flying Trapeze")).toBeLessThan(
       ladder.indexOf("Brain Twister"),
     );
+    expect(ladder.indexOf("Brain Twister")).toBeLessThan(ladder.indexOf("Eli Hops"));
 
     // The later rows say what opens them rather than offering an action that would be refused.
     expect(ladder).toContain("Land Rock the Baby first");
     expect(ladder).toContain("Land Man on the Flying Trapeze first");
-    expect(ladder.match(/<button/g)).toHaveLength(1);
+    expect(ladder).toContain("4s · Structural Trick");
+    expect(ladder).toContain(
+      "Throw Power packs more Spin into every Throw without making Sleepers longer.",
+    );
+    expect(ladder.match(/<button/g)).toHaveLength(2);
     expect(ladder).toMatch(
       /<button(?![^>]*disabled)[^>]*>Attempt Rock the Baby<\/button>/,
     );
+    expect(ladder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
   });
 
   it("does not advertise Divisions whose progression does not exist", () => {
@@ -220,11 +236,39 @@ describe("the 1A Division", () => {
   it("quotes the duration, the permanent reward and the exact Spin a landing leaves", () => {
     const store = createGameStore({ now: () => 0 });
 
-    const ladder = trickLadderMarkup(store);
+    const ladder = trickDivisionMarkup(store);
 
     // An opening Throw has 100 Spin and Rock the Baby costs 45 of it.
     expect(ladder).toContain("1.5s · ×1.25 Style");
     expect(ladder).toContain("Lands with 55 Spin still turning.");
+    // Eli Hops is offered beside it, even though the opening Sleeper cannot sustain the Mount.
+    expect(ladder).toContain("Runs out of Spin after 2.5s, and the Yoyo dies.");
+  });
+
+  it("lands Eli Hops with its exact preview and raises the headline through its Structural effect", () => {
+    let now = 0;
+    const store = createGameStore({
+      now: () => now,
+      restored: { tickedAt: now, state: gearedFreshSleeper(5) },
+    });
+
+    const before = renderToStaticMarkup(<App store={store} />);
+    expect(before).toContain("Lands with 60 Spin still turning.");
+    expect(before).toMatch(
+      /<output[^>]*aria-label="Sustained Style"[^>]*>0.77<\/output>/,
+    );
+
+    store.attemptTrick("eli-hops");
+    now = 4_000;
+    store.tick();
+
+    const after = renderToStaticMarkup(<App store={store} />);
+    expect(after).toContain("Eli Hops");
+    expect(after).toContain("Landed");
+    expect(after).not.toContain("Attempt Eli Hops");
+    expect(after).toMatch(
+      /<output[^>]*aria-label="Sustained Style"[^>]*>1.15<\/output>/,
+    );
   });
 
   it("says exactly when a late Attempt would kill the yoyo, and still offers it", () => {
@@ -235,7 +279,7 @@ describe("the 1A Division", () => {
     now = 3_500;
     store.tick();
 
-    const ladder = trickLadderMarkup(store);
+    const ladder = trickDivisionMarkup(store);
 
     expect(ladder).toContain("Runs out of Spin after 1s, and the Yoyo dies.");
     expect(ladder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
@@ -248,7 +292,7 @@ describe("the 1A Division", () => {
     now = 6_000;
     store.tick();
 
-    const ladder = trickLadderMarkup(store);
+    const ladder = trickDivisionMarkup(store);
 
     expect(ladder).toMatch(/<button[^>]*disabled=""[^>]*>Attempt Rock the Baby<\/button>/);
     expect(ladder).toContain("Available while the yoyo is a Sleeper.");
@@ -262,7 +306,7 @@ describe("the 1A Division", () => {
     now = 500;
     store.tick();
 
-    const ladder = trickLadderMarkup(store);
+    const ladder = trickDivisionMarkup(store);
 
     expect(ladder).toContain("Rock the Baby in progress. An Attempt cannot be cancelled.");
     expect(ladder).toMatch(/<button[^>]*disabled=""[^>]*>Attempt Rock the Baby<\/button>/);
@@ -276,7 +320,7 @@ describe("the 1A Division", () => {
     now = 1_500;
     store.tick();
 
-    const ladder = trickLadderMarkup(store);
+    const ladder = trickDivisionMarkup(store);
 
     expect(ladder).toContain("Landed");
     expect(ladder).not.toContain("Attempt Rock the Baby");
@@ -323,6 +367,13 @@ describe("the 1A Division", () => {
     expect(renderToStaticMarkup(<App store={store} />)).toContain(
       'aria-label="Rock the Baby: an Attempt in progress on the Sleeper"',
     );
+
+    const mountStore = createGameStore({ now: () => now });
+    mountStore.attemptTrick("eli-hops");
+
+    expect(renderToStaticMarkup(<App store={mountStore} />)).toContain(
+      'aria-label="Eli Hops: an Attempt in progress on the Sleeper"',
+    );
   });
 
   /**
@@ -341,12 +392,12 @@ describe("the 1A Division", () => {
     now = 1_500;
     store.tick();
 
-    // Between the two landings: Man on the Flying Trapeze is the only actionable row, and
-    // Brain Twister still explains what it is waiting on rather than offering an action.
-    const afterRockTheBaby = trickLadderMarkup(store);
+    // Between the two landings: the next spine row and the independent Mount remain actionable,
+    // while Brain Twister still explains what it is waiting on.
+    const afterRockTheBaby = trickDivisionMarkup(store);
     expect(afterRockTheBaby).toContain("Land Man on the Flying Trapeze first");
     expect(afterRockTheBaby).not.toContain("Land Rock the Baby first");
-    expect(afterRockTheBaby.match(/<button/g)).toHaveLength(1);
+    expect(afterRockTheBaby.match(/<button/g)).toHaveLength(2);
 
     store.attemptTrick("man-on-the-flying-trapeze");
 
@@ -359,7 +410,7 @@ describe("the 1A Division", () => {
     now = 4_000;
     store.tick();
 
-    const ladder = trickLadderMarkup(store);
+    const ladder = trickDivisionMarkup(store);
     expect(ladder.match(/Landed/g)).toHaveLength(2);
     expect(ladder).not.toContain("Land Man on the Flying Trapeze first");
     expect(ladder).not.toContain("Land Brain Twister first");
@@ -377,7 +428,7 @@ describe("the 1A Division", () => {
    * — 400 Spin against 45, 100 and 200 — carries every landing onto one Sleeper, same as #68's
    * test does for the first two.
    */
-  it("lands Brain Twister after the first two, completing the ladder with its own motion and no row left to act on", () => {
+  it("lands Brain Twister after the first two, finishing the spine while the Mount remains open", () => {
     let now = 0;
     const store = createGameStore({
       now: () => now,
@@ -391,9 +442,9 @@ describe("the 1A Division", () => {
     now = 4_000;
     store.tick();
 
-    // Between the second landing and the third: Brain Twister is the only actionable row.
-    const beforeBrainTwister = trickLadderMarkup(store);
-    expect(beforeBrainTwister.match(/<button/g)).toHaveLength(1);
+    // Between the second landing and the third: Brain Twister and the independent Mount are open.
+    const beforeBrainTwister = trickDivisionMarkup(store);
+    expect(beforeBrainTwister.match(/<button/g)).toHaveLength(2);
     expect(beforeBrainTwister).toMatch(
       /<button(?![^>]*disabled)[^>]*>Attempt Brain Twister<\/button>/,
     );
@@ -408,10 +459,9 @@ describe("the 1A Division", () => {
     now = 8_000;
     store.tick();
 
-    const ladder = trickLadderMarkup(store);
+    const ladder = trickDivisionMarkup(store);
     expect(ladder.match(/Landed/g)).toHaveLength(3);
-    // Every row says Landed; nothing on the ladder is next any longer.
-    expect(ladder).not.toMatch(/<button/);
+    expect(ladder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
 
     expect(renderToStaticMarkup(<App store={store} />)).toMatch(
       /<output[^>]*aria-label="Sustained Style"[^>]*>6\.52<\/output>/,
@@ -442,7 +492,7 @@ describe("the 1A Division", () => {
     now = 5_100;
     store.tick();
 
-    const ladder = trickLadderMarkup(store);
+    const ladder = trickDivisionMarkup(store);
     expect(ladder.match(/Landed/g)).toHaveLength(2);
     expect(ladder).not.toContain("Land Brain Twister first");
     expect(ladder).toMatch(/<button[^>]*disabled=""[^>]*>Attempt Brain Twister<\/button>/);
@@ -453,11 +503,11 @@ describe("the 1A Division", () => {
     store.tick();
     store.throwYoyo();
 
-    const freshLadder = trickLadderMarkup(store);
-    expect(freshLadder).not.toContain("Land Brain Twister first");
+    const freshDivision = trickDivisionMarkup(store);
+    expect(freshDivision).not.toContain("Land Brain Twister first");
     // Back to a fresh 200-Spin Throw: lands exactly on empty against a 200-Spin cost, which is
     // a death rather than a landing — the boundary this file elsewhere calls "the exact second".
-    expect(freshLadder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
+    expect(freshDivision).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
   });
 });
 

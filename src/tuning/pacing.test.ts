@@ -5,7 +5,7 @@ import { trickById } from "../core/simulation.js";
 import type { Purchasable, Report } from "./simulate.js";
 import { simulate } from "./simulate.js";
 import type { Timeline } from "./timeline.js";
-import { CANONICAL_TIMELINE } from "./timeline.js";
+import { CANONICAL_TIMELINE, FIRST_SESSION_SECONDS } from "./timeline.js";
 
 /**
  * The pacing guards.
@@ -181,7 +181,7 @@ function engagedSecondsBy(timeline: Timeline, atSeconds: number): number {
   return engaged;
 }
 
-describe("the 1A ladder", () => {
+describe("the 1A Division", () => {
   /**
    * The plan's first pacing role: Rock the Baby "safely lands on the opening Throw before any
    * Gear purchase." The engaged player Attempts the moment it is safe (#71), so an Attempt begun
@@ -243,6 +243,23 @@ describe("the 1A ladder", () => {
 
     expect(brainTwister.atSeconds).toBeGreaterThan(autoThrower.atSeconds);
     expect(engagedSecondsBy(CANONICAL_TIMELINE, brainTwister.atSeconds)).toBeLessThanOrEqual(30 * 60);
+  });
+
+  /**
+   * The first Mount is visible in the same Report as the spine rather than silently changing a
+   * final multiplier. Under the temporary spine-first player policy it follows Brain Twister;
+   * #85 replaces that ordering assumption when the harness learns to partition Spin.
+   */
+  it("reports Eli Hops as Mount content within the first Session", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const brainTwister = landingOf(report, "brain-twister");
+    const eliHops = landingOf(report, "eli-hops");
+
+    expect(eliHops.atSeconds).toBeGreaterThan(brainTwister.atSeconds);
+    expect(engagedSecondsBy(CANONICAL_TIMELINE, eliHops.atSeconds)).toBeLessThanOrEqual(
+      FIRST_SESSION_SECONDS,
+    );
   });
 });
 

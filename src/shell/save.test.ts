@@ -7,6 +7,7 @@ import {
   buyThrowPower,
   initialState,
   throwYoyo,
+  type GameState,
 } from "../core/simulation.js";
 import {
   deserializeSave,
@@ -172,6 +173,31 @@ describe("a save written before there were any Tricks", () => {
 });
 
 describe("a saved Trick", () => {
+  it("round-trips a version 3 game from before Mounts without inventing Eli Hops", () => {
+    const state: GameState = {
+      ...throwYoyo(initialState()),
+      style: 42.5,
+      lifetimeStyle: 84.75,
+      spin: 137,
+      phaseElapsed: 1.25,
+      throwPowerLevel: 4,
+      bearingLevel: 2,
+      rewindSpeedLevel: 1,
+      activeThrowGear: { bearingLevel: 2, rewindSpeedLevel: 1 },
+      hasAutoThrower: true,
+      landedTricks: ["rock-the-baby", "man-on-the-flying-trapeze"],
+    };
+    const document = JSON.stringify({ savedAt: 12_345, state });
+
+    const loaded = deserializeSave(document);
+    if (loaded === null) throw new Error("expected the version 3 save to load");
+
+    expect(loaded.state).toEqual(state);
+    expect(loaded.state.version).toBe(3);
+    expect(loaded.state.landedTricks).not.toContain("eli-hops");
+    expect(deserializeSave(serializeSave(loaded))).toEqual(loaded);
+  });
+
   it("round-trips a landed ladder and an Attempt in progress", () => {
     const attempting = advance(attemptTrick(throwYoyo(initialState()), "rock-the-baby"), 1.7);
     const saved = { savedAt: 12_345, state: attempting };

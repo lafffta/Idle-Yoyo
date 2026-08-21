@@ -511,7 +511,7 @@ h1 {
     rgba(35, 33, 28, 0.64);
 }
 
-.trick-ladder {
+.trick-division {
   justify-self: center;
   width: min(100%, 68rem);
   padding: clamp(1.25rem, 3vw, 2rem);
@@ -522,7 +522,7 @@ h1 {
   backdrop-filter: blur(12px);
 }
 
-.trick-ladder-heading {
+.trick-division-heading {
   display: flex;
   align-items: end;
   justify-content: space-between;
@@ -530,17 +530,17 @@ h1 {
   margin-bottom: 1.25rem;
 }
 
-.trick-ladder-heading .eyebrow {
+.trick-division-heading .eyebrow {
   margin-bottom: 0.45rem;
 }
 
-.trick-ladder-heading h2 {
+.trick-division-heading h2 {
   color: #f4f0e6;
   font-size: clamp(1.25rem, 2.5vw, 1.7rem);
   font-weight: 500;
 }
 
-.trick-ladder-heading p:last-child {
+.trick-division-heading p:last-child {
   max-width: 24rem;
   margin: 0;
   color: #8e887d;
@@ -548,8 +548,29 @@ h1 {
   text-align: right;
 }
 
+.trick-groups,
+.trick-group,
 .trick-list {
   display: grid;
+}
+
+.trick-groups {
+  gap: 1.15rem;
+}
+
+.trick-group {
+  gap: 0.65rem;
+}
+
+.trick-group-heading {
+  color: #b8b0a1;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.trick-list {
   gap: 0.65rem;
 }
 
@@ -564,7 +585,7 @@ h1 {
   background: rgba(24, 23, 19, 0.55);
 }
 
-.trick-row.is-next {
+.trick-row.is-attemptable {
   border-color: rgba(222, 118, 75, 0.32);
 }
 
@@ -577,7 +598,7 @@ h1 {
   gap: 0.35rem;
 }
 
-.trick-copy h3 {
+.trick-copy h4 {
   color: #f4f0e6;
   font-size: 0.95rem;
   font-weight: 600;
@@ -598,7 +619,13 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
-.trick-row.is-landed .trick-copy h3 {
+.trick-effect {
+  margin: 0;
+  color: #b8b0a1;
+  font-size: 0.78rem;
+}
+
+.trick-row.is-landed .trick-copy h4 {
   color: #b8b0a1;
 }
 

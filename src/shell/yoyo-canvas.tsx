@@ -302,6 +302,53 @@ function twistShiver(progress: number, reducedMotion: boolean): number {
   return Math.sin(progress * Math.PI * 9) * 9 * (1 - progress * 0.4);
 }
 
+/**
+ * Eli Hops: the yoyo begins mounted between two hands, rises as the hands come together, and
+ * returns to the mounted string as they spread. Two clear hops make this read apart from the
+ * one-pass trapeze swing even though both begin from a Trapeze Mount.
+ *
+ * Reduced motion holds the mounted pose. The progress ring still shows the Attempt resolving,
+ * without either the yoyo or the hands travelling across the canvas.
+ */
+function eliHopsPose(
+  centre: Point,
+  progress: number,
+  reducedMotion: boolean,
+): { yoyo: Point; leftHand: Point; rightHand: Point } {
+  const hop = reducedMotion ? 0 : Math.sin(progress * Math.PI * 2) ** 2;
+  const handSpread = 82 - hop * 34;
+
+  return {
+    yoyo: {
+      x: centre.x + (reducedMotion ? 0 : Math.sin(progress * Math.PI * 4) * 8),
+      y: centre.y - hop * 118,
+    },
+    leftHand: { x: centre.x - handSpread, y: 38 + hop * 10 },
+    rightHand: { x: centre.x + handSpread, y: 38 + hop * 10 },
+  };
+}
+
+/** The mounted string between the two hands used for Eli Hops. */
+function drawEliHopsMount(
+  context: CanvasRenderingContext2D,
+  leftHand: Point,
+  rightHand: Point,
+  yoyo: Point,
+): void {
+  const yoyoTop = yoyo.y - YOYO_RADIUS + 3;
+
+  context.save();
+  context.strokeStyle = "#c7bfae";
+  context.lineWidth = 1.4;
+  context.lineJoin = "round";
+  context.beginPath();
+  context.moveTo(leftHand.x, leftHand.y + 14);
+  context.lineTo(yoyo.x, yoyoTop);
+  context.lineTo(rightHand.x, rightHand.y + 14);
+  context.stroke();
+  context.restore();
+}
+
 function drawAttemptProgress(
   context: CanvasRenderingContext2D,
   position: Point,
@@ -352,24 +399,35 @@ function drawScene(
   const rocking = attempt?.trick.id === "rock-the-baby";
   const flying = attempt?.trick.id === "man-on-the-flying-trapeze";
   const twisting = attempt?.trick.id === "brain-twister";
+  const hopping = attempt?.trick.id === "eli-hops";
   const trapeze = flying && attempt !== null ? trapezeOffset(attempt.progress, reducedMotion) : null;
+  const eliPose =
+    hopping && attempt !== null ? eliHopsPose(resting, attempt.progress, reducedMotion) : null;
   const yoyo =
-    attempt !== null && rocking
-      ? { x: resting.x + swingOffset(attempt.progress, reducedMotion), y: resting.y }
-      : trapeze !== null
-        ? { x: resting.x + trapeze.x, y: resting.y + trapeze.y }
-        : attempt !== null && twisting
-          ? { x: resting.x + twistShiver(attempt.progress, reducedMotion), y: resting.y }
-          : resting;
+    eliPose !== null
+      ? eliPose.yoyo
+      : attempt !== null && rocking
+        ? { x: resting.x + swingOffset(attempt.progress, reducedMotion), y: resting.y }
+        : trapeze !== null
+          ? { x: resting.x + trapeze.x, y: resting.y + trapeze.y }
+          : attempt !== null && twisting
+            ? { x: resting.x + twistShiver(attempt.progress, reducedMotion), y: resting.y }
+            : resting;
   const spinRatio =
     state.phase === "Sleeping" ? clamp(state.spin / Math.max(throwPower(state), 1), 0, 1) : 0;
 
-  if (attempt !== null && rocking) drawCradle(context, hand, yoyo, attempt.progress);
+  if (eliPose !== null) drawEliHopsMount(context, eliPose.leftHand, eliPose.rightHand, yoyo);
+  else if (attempt !== null && rocking) drawCradle(context, hand, yoyo, attempt.progress);
   else if (attempt !== null && flying) drawTrapezeBar(context, hand, yoyo);
   else if (attempt !== null && twisting) drawTwistedString(context, hand, yoyo, attempt.progress);
   else drawString(context, hand, yoyo);
 
-  drawHand(context, hand);
+  if (eliPose !== null) {
+    drawHand(context, eliPose.leftHand);
+    drawHand(context, eliPose.rightHand);
+  } else {
+    drawHand(context, hand);
+  }
   drawYoyo(context, yoyo, angle, spinRatio);
   if (attempt !== null) drawAttemptProgress(context, yoyo, attempt.progress);
 }
@@ -385,10 +443,10 @@ function sceneDescription(attempting: string | null): string {
 
 export function YoyoCanvas({ store }: YoyoCanvasProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const ladder = useSyncExternalStore(
-    store.subscribeToTrickLadder,
-    store.getTrickLadder,
-    store.getTrickLadder,
+  const division = useSyncExternalStore(
+    store.subscribeToTrickDivision,
+    store.getTrickDivision,
+    store.getTrickDivision,
   );
 
   useEffect(() => {
@@ -436,7 +494,7 @@ export function YoyoCanvas({ store }: YoyoCanvasProps) {
       ref={canvas}
       className="yoyo-canvas"
       role="img"
-      aria-label={sceneDescription(ladder.attempting)}
+      aria-label={sceneDescription(division.attempting)}
     >
       A yoyo whose motion follows the current Throw Cycle.
     </canvas>

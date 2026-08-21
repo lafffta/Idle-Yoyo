@@ -29,13 +29,13 @@ function freshSleeper() {
   return throwYoyo(initialState());
 }
 
-/** The opening spine's only live choice until #82, named explicitly at the public Attempt seam. */
+/** The first live spine choice, named explicitly at the public Attempt seam. */
 function attemptTrick(state: GameState): GameState {
   const [trick] = attemptableTricks(state);
   return trick === undefined ? state : attemptNamedTrick(state, trick.id);
 }
 
-/** The opening spine's only live preview until #82, named explicitly at the public Attempt seam. */
+/** The first live spine preview, named explicitly at the public Attempt seam. */
 function previewAttempt(state: GameState): AttemptPreview | null {
   const [trick] = attemptableTricks(state);
   return trick === undefined ? null : previewNamedAttempt(state, trick.id);
@@ -1187,8 +1187,11 @@ describe("coming back from eight hours away without an Auto-Thrower", () => {
  * Throw, from a yoyo with nothing bought.
  */
 describe("Attempting a Trick", () => {
-  it("offers Rock the Baby as the only Trick Attemptable on the opening Sleeper", () => {
-    expect(attemptableTricks(freshSleeper()).map((trick) => trick.id)).toEqual(["rock-the-baby"]);
+  it("offers the opening spine Trick and Eli Hops together on the opening Sleeper", () => {
+    expect(attemptableTricks(freshSleeper()).map((trick) => trick.id)).toEqual([
+      "rock-the-baby",
+      "eli-hops",
+    ]);
   });
 
   it("refuses a named Trick further up the spine", () => {
@@ -1290,12 +1293,56 @@ describe("Attempting a Trick", () => {
     expect(attemptableTricks(landed)[0]?.name).toBe("Man on the Flying Trapeze");
   });
 
-  it("shows the 1A Division as three Tricks in the order they must be landed in", () => {
+  it("keeps the three-Trick spine in order before the Mount content", () => {
     expect(TRICKS_1A.map((trick) => trick.name)).toEqual([
       "Rock the Baby",
       "Man on the Flying Trapeze",
       "Brain Twister",
+      "Eli Hops",
     ]);
+  });
+});
+
+describe("landing Eli Hops from the Trapeze Mount", () => {
+  it("previews and packs more Spin into the current Throw and every Throw after it", () => {
+    const geared = afterBuyingThrowPower(5);
+    const sleeper = throwYoyo(geared);
+
+    const preview = previewNamedAttempt(sleeper, "eli-hops");
+    const attempting = attemptNamedTrick(sleeper, "eli-hops");
+    const landed = advance(attempting, 4);
+    const nextThrow = throwYoyo({ ...geared, landedTricks: ["eli-hops"] });
+
+    // The 200-Spin Throw spends 160 on the Attempt, then Eli Hops packs the 40 left into 60.
+    expect(preview?.outcome).toEqual({ lands: true, spinOnLanding: 60 });
+    expect(projectedYield(attempting)).toBeCloseTo(styleEarnedBeforeDying(attempting), 8);
+    expect(landed.spin).toBeCloseTo(60, 10);
+    expect(nextThrow.spin).toBe(300);
+  });
+
+  it("leaves Sleeper length, Rewind, and Uptime unchanged under the same Gear", () => {
+    const geared = afterShopping(
+      [buyThrowPower, 5],
+      [buyBearing, 3],
+      [buyRewindSpeed, 2],
+    );
+    const held: GameState = { ...geared, landedTricks: ["eli-hops"] };
+
+    expect(sleeperLength(held)).toBeCloseTo(sleeperLength(geared), 10);
+    expect(rewindDuration(held)).toBeCloseTo(rewindDuration(geared), 10);
+    expect(uptime(held)).toBeCloseTo(uptime(geared), 10);
+    expect(sustainedStyle(held)).toBeCloseTo(1.5 * sustainedStyle(geared), 10);
+
+    const rewinding = advance(throwYoyo(held), sleeperLength(held));
+    expect(rewinding.phase).toBe("Rewinding");
+    expect(advance(rewinding, 1).style).toBeCloseTo(rewinding.style, 10);
+  });
+
+  it("cannot be previewed or Attempted again once it has landed", () => {
+    const sleeper: GameState = { ...freshSleeper(), landedTricks: ["eli-hops"] };
+
+    expect(previewNamedAttempt(sleeper, "eli-hops")).toBe(null);
+    expect(activeAttempt(attemptNamedTrick(sleeper, "eli-hops"))).toBe(null);
   });
 });
 
@@ -1452,7 +1499,7 @@ describe("completing the ladder with Brain Twister", () => {
    * and 200, in that order, leaving 55 to spare — the same margin Rock the Baby and Man on the
    * Flying Trapeze leave each other, extended one row further.
    */
-  it("lands on a strong enough Throw, completing the Division and compounding all three rewards", () => {
+  it("lands on a strong enough Throw, finishing the spine and compounding all three rewards", () => {
     const before = sustainedStyle(throwYoyo(afterBuyingThrowPower(15)));
     const bothLanded = landedRockAndTrapeze(15);
     expect(previewAttempt(bothLanded)?.outcome).toEqual({ lands: true, spinOnLanding: 55 });
@@ -1468,10 +1515,7 @@ describe("completing the ladder with Brain Twister", () => {
     expect(allLanded.spin).toBeCloseTo(55, 10);
     expect(sustainedStyle(allLanded)).toBeCloseTo(before * 1.25 * 1.5 * 2, 10);
 
-    // Nothing left to offer: the ladder is finished, not merely quiet between rows.
-    expect(attemptableTricks(allLanded)).toEqual([]);
-    expect(previewAttempt(allLanded)).toBe(null);
-    expect(attemptTrick(allLanded)).toEqual(allLanded);
+    expect(attemptableTricks(allLanded).map((trick) => trick.id)).toEqual(["eli-hops"]);
   });
 
   it("runs its Attempt over its own 4-second duration, not one borrowed from an earlier row", () => {
@@ -1812,6 +1856,23 @@ describe("an Attempt resolving whether or not anyone is watching", () => {
 
     expect(returned.landedTricks).toEqual(["rock-the-baby"]);
     expect(returned.attempt).toBe(null);
+  });
+
+  it("lands Eli Hops identically in one long Absence or many watched ticks", () => {
+    const geared = afterBuyingThrowPower(5);
+    const automatic = buyAutoThrower({ ...geared, style: autoThrowerCost() });
+    const attempting = attemptNamedTrick(throwYoyo(automatic), "eli-hops");
+
+    const returned = advance(attempting, EIGHT_HOURS);
+    let watched = attempting;
+    for (let second = 0; second < EIGHT_HOURS; second++) watched = advance(watched, 1);
+
+    expect(returned.landedTricks).toEqual(["eli-hops"]);
+    expect(watched.landedTricks).toEqual(returned.landedTricks);
+    expect(watched.phase).toBe(returned.phase);
+    expect(watched.spin).toBeCloseTo(returned.spin, 10);
+    expect(watched.style).toBeCloseTo(returned.style, 10);
+    expect(returned.style).toBeGreaterThan(10_000);
   });
 
   /**

@@ -140,13 +140,12 @@ export type AutoThrower =
     };
 
 /**
- * What became of one row of the 1A ladder — landed or not, and if landed, when.
+ * What became of one Trick in the 1A Division — landed or not, and if landed, when.
  *
  * Named and timed rather than merely counted, so a Report can place a Trick against the
  * Auto-Thrower and against `FIRST_SESSION_SECONDS` without a reader having to guess which row a
- * bare count refers to, and without the harness exposing the order its own policy considered them
- * in — the ladder is already linear, and `atSeconds` says only when the one Trick it made
- * available at the time was landed.
+ * bare count refers to. The record order is authored display order; `atSeconds` carries the
+ * actual landing order without pretending the spine and Mount are one linear ladder.
  */
 export type TrickRecord =
   | { readonly id: TrickId; readonly name: string; readonly landed: false }
@@ -200,7 +199,7 @@ export type Report = {
    * practice or only in principle, and nobody has known which.
    */
   readonly rewindReachedFloor: boolean;
-  /** The 1A ladder, in landing order, and what became of each row. */
+  /** The 1A Division in authored display order, and what became of each Trick. */
   readonly tricks: readonly TrickRecord[];
   readonly autoThrower: AutoThrower;
   readonly absencesWithAutoThrower: AbsenceEarnings;
@@ -776,7 +775,7 @@ type GearRow = ShopRow & { readonly item: GearStat; readonly level: (state: Game
  * the right one to "may I have it?", and now that the player ranks rows they are saving up for,
  * only the first question is being asked here.
  *
- * **Sustained Style is credited with the next Trick's multiplier the moment this purchase would
+ * **Sustained Style is credited with the next Trick's landed effect the moment this purchase would
  * put it in reach**, through `sustainedStyleCreditingNextTrick` rather than `sustainedStyle`
  * itself. Both Throw Power and the Bearing improve Attempt safety (the plan asks for both to),
  * and without this a level that finally clears a Trick's threshold would be valued no differently
@@ -807,13 +806,14 @@ function gearRow(
 }
 
 /**
- * Sustained Style, credited with the next Trick's permanent multiplier the instant a fresh Throw
- * at the Gear this state owns would land it.
+ * Sustained Style, credited with the policy's next Trick effect the instant a fresh Throw at the
+ * Gear this state owns would land it.
  *
- * The engaged player Attempts the next Trick the moment it is safe (`maybeAttempt` asks the same
+ * The engaged player Attempts that Trick the moment it is safe (`maybeAttempt` asks the same
  * `wouldLandFresh` question of the Sleeper they are actually holding), so a Gear purchase that
- * clears the threshold is worth crediting with the landing it is about to cause — otherwise the
- * shop would see only the earning-rate rise and never the reason to reach for it.
+ * clears the threshold is worth crediting with the landing it is about to cause. The current
+ * policy takes the first authored Attemptable choice, spine before Mount; #85 replaces that
+ * placeholder with a player model that partitions Spin across simultaneous choices.
  */
 function sustainedStyleCreditingNextTrick(state: GameState): number {
   const [trick] = attemptableTricks(freshThrow(state));
@@ -1000,14 +1000,14 @@ function attemptBoundarySeconds(state: GameState, attempt: Attempt): number {
 }
 
 /**
- * What the engaged player does with a Sleeper that is free to Attempt something: land the next
- * Trick the instant it is safe, sacrifice the Sleeper on a fatal Attempt anyway when a fresh Throw
- * would land it and this one will not, or leave it alone.
+ * What the engaged player does with a Sleeper that is free to Attempt something: take the first
+ * authored choice the instant it is safe, sacrifice the Sleeper on a fatal Attempt anyway when a
+ * fresh Throw would land it and this one will not, or leave it alone. This spine-before-Mount
+ * choice is intentionally temporary; #85 replaces it with explicit Spin partitioning.
  *
- * Called wherever the string is spinning with nothing already committed — the instant a Throw
- * lands the yoyo on a fresh Sleeper, and again the instant an earlier Trick in the same Sleeper
- * lands and frees it for the next one — so a chain is the same decision asked twice rather than a
- * second policy layered over the first.
+ * Called wherever a live Sleeper has nothing already committed — the instant a Throw begins one,
+ * and again the instant an earlier Trick in the same Sleeper lands and frees it for another — so
+ * a chain is the same decision asked twice rather than a second policy layered over the first.
  *
  * A safe Attempt is never declined: it costs nothing but the Sleeper's tail, which keeps earning
  * at the Trick's own (higher) drain throughout, and it buys a multiplier that is permanent from
@@ -1044,29 +1044,6 @@ function wouldLandFresh(state: GameState, trickId: TrickId): boolean {
   const preview = previewAttempt(freshThrow(state), trickId);
   return preview !== null && preview.outcome.lands;
 }
-
-/**
- * **Chaining, and the sacrifice `wouldLandFresh` exists to weigh, do not appear to happen at the
- * current constants — checked against the canonical timeline and swept across single-Session
- * timelines from 24s to an hour, and named here rather than left for the next reader to
- * rediscover.** Rock the Baby always resolves on the opening Throw at no Gear (it is safe from
- * the very start), so the Sleeper it leaves behind is fixed the instant the run begins and never
- * has enough Spin left over for Man on the Flying Trapeze regardless of what is bought later. Man
- * on the Flying Trapeze itself is Attempted the moment its own threshold is first crossed — Gear
- * bought for Attemptable-Trick credit stops being credited the instant that Trick lands, and shopping
- * for Brain Twister's own much higher threshold only starts afterwards — so it is always landed
- * fresh at the Gear that only just clears it, never at Gear that would also clear Brain Twister on
- * the same Sleeper. Both Tricks the current ladder chains onto are chained from, in other words,
- * and the one Trick actually reached by a chain-worthy Sleeper is the one nothing can chain onto.
- *
- * The mechanism is real and general — `maybeAttempt` is called again the instant a landing frees
- * the Sleeper for the next Trick, exactly as it is after a Throw, and the core's own tests already
- * cover a Sleeper that does have the Spin to carry two Tricks. What is missing is a play pattern
- * under the *current* ladder and constants that reaches one from a cold start, and manufacturing
- * one — richer Gear at the moment Man on the Flying Trapeze first becomes reachable, or a fourth
- * Trick close enough behind a third to chain onto it — is a finding about the ladder rather than
- * about this function, and is left to whoever picks it up next.
- */
 
 function gearOf(state: GameState): GearLevels {
   return {
