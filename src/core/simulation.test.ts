@@ -1195,6 +1195,14 @@ describe("Attempting a Trick", () => {
     ]);
   });
 
+  it("makes Mach 5 reachable only after the Auto-Thrower is owned", () => {
+    const manual = attemptableTricks(freshSleeper()).map((trick) => trick.id);
+    const automatic = attemptableTricks(automaticSleeper()).map((trick) => trick.id);
+
+    expect(manual).not.toContain("mach-5");
+    expect(automatic).toEqual(["rock-the-baby", "eli-hops", "cold-fusion", "mach-5"]);
+  });
+
   it("quotes Cold Fusion's own exact outcome beside the other opening choices", () => {
     const sleeper = freshSleeper();
     const coldFusion = attemptableTricks(sleeper).find((trick) => trick.id === "cold-fusion");
@@ -1312,6 +1320,7 @@ describe("Attempting a Trick", () => {
       "Brain Twister",
       "Eli Hops",
       "Cold Fusion",
+      "Mach 5",
     ]);
   });
 });
@@ -1426,6 +1435,175 @@ describe("landing Cold Fusion from the Double-or-Nothing Mount", () => {
 
     expect(bothLanded.landedTricks).toEqual(["cold-fusion", "eli-hops"]);
     expect(bothLanded.phase).toBe("Sleeping");
+  });
+});
+
+describe("landing Mach 5 from the Split Bottom Mount", () => {
+  it("previews and lands as the first Structural Trick after the Auto-Thrower", () => {
+    const geared = afterBuyingThrowPower(12);
+    const automatic = buyAutoThrower({ ...geared, style: autoThrowerCost() });
+    const sleeper = throwYoyo(automatic);
+
+    expect(previewNamedAttempt(sleeper, "mach-5")?.outcome).toEqual({
+      lands: true,
+      spinOnLanding: 10,
+      styleBonus: 0,
+    });
+
+    const landed = advance(attemptNamedTrick(sleeper, "mach-5"), 6);
+
+    expect(landed.landedTricks).toEqual(["mach-5"]);
+    expect(landed.spin).toBeCloseTo(10, 10);
+    expect(landed.phase).toBe("Sleeping");
+  });
+
+  it("never changes Rewind duration, its floor, Sleeper length, or Uptime", () => {
+    for (const rewindSpeedLevels of [0, 5, 24, 100]) {
+      const geared = afterShopping(
+        [buyThrowPower, 4],
+        [buyBearing, 3],
+        [buyRewindSpeed, rewindSpeedLevels],
+      );
+      const held: GameState = { ...geared, landedTricks: ["mach-5"] };
+
+      expect(rewindDuration(held)).toBeCloseTo(rewindDuration(geared), 10);
+      expect(rewindDuration(held)).toBeGreaterThan(0);
+      expect(sleeperLength(held)).toBeCloseTo(sleeperLength(geared), 10);
+      expect(uptime(held)).toBeCloseTo(uptime(geared), 10);
+
+      const rewinding = advance(throwYoyo(held), sleeperLength(held));
+      const committed = attemptNamedTrick(rewinding, "rock-the-baby");
+      const midway = advance(committed, rewindDuration(held) / 2);
+
+      expect(currentStyleRate(committed)).toBe(0);
+      expect(midway.style).toBeCloseTo(committed.style, 10);
+      expect(midway.lifetimeStyle).toBeCloseTo(committed.lifetimeStyle, 10);
+      expect(midway.attempt).toEqual(committed.attempt);
+    }
+  });
+});
+
+describe("Attempting during Rewind after landing Mach 5", () => {
+  function automaticRewind(landedTricks: GameState["landedTricks"] = []): GameState {
+    return advance({ ...automaticSleeper(), landedTricks }, 6);
+  }
+
+  it("derives permission from the landed Trick and quotes the next Sleeper exactly", () => {
+    const withoutMach5 = automaticRewind();
+    const withMach5 = automaticRewind(["mach-5"]);
+
+    expect(withoutMach5.phase).toBe("Rewinding");
+    expect(previewNamedAttempt(withoutMach5, "rock-the-baby")).toBe(null);
+    expect(attemptNamedTrick(withoutMach5, "rock-the-baby")).toEqual(withoutMach5);
+
+    expect(previewNamedAttempt(withMach5, "rock-the-baby")?.outcome).toEqual({
+      lands: true,
+      spinOnLanding: 55,
+      styleBonus: 0,
+    });
+    const committed = attemptNamedTrick(withMach5, "rock-the-baby");
+    expect(committed.attempt).toEqual({
+      trickId: "rock-the-baby",
+      remaining: 1.5,
+      promisedThrow: { throwPowerLevel: 0, bearingLevel: 0 },
+    });
+    expect(activeAttempt(committed)?.trick.name).toBe("Rock the Baby");
+    expect(activeAttempt(committed)?.progress).toBe(0);
+  });
+
+  it("earns and advances nothing until the next Sleeper, then lands normally", () => {
+    const rewinding = automaticRewind(["mach-5"]);
+    const committed = attemptNamedTrick(rewinding, "rock-the-baby");
+
+    const stillRewinding = advance(committed, 1);
+    expect(stillRewinding.phase).toBe("Rewinding");
+    expect(stillRewinding.style).toBeCloseTo(committed.style, 10);
+    expect(stillRewinding.lifetimeStyle).toBeCloseTo(committed.lifetimeStyle, 10);
+    expect(stillRewinding.attempt).toEqual(committed.attempt);
+
+    const nextSleeper = advance(stillRewinding, 1);
+    expect(nextSleeper.phase).toBe("Sleeping");
+    expect(nextSleeper.spin).toBe(100);
+    expect(nextSleeper.attempt).toEqual(committed.attempt);
+
+    const landed = advance(nextSleeper, 1.5);
+    expect(landed.landedTricks).toEqual(["mach-5", "rock-the-baby"]);
+    expect(landed.phase).toBe("Sleeping");
+    expect(landed.spin).toBeCloseTo(55, 10);
+  });
+
+  it("carries a fatal Rewind commitment into the ordinary Rewind", () => {
+    const rewinding = automaticRewind(["mach-5"]);
+    const committed = attemptNamedTrick(rewinding, "eli-hops");
+
+    const dead = advance(committed, 4.5);
+
+    // Two seconds finish the current Rewind; the fresh 100-Spin Sleeper then dies 2.5s into
+    // Eli Hops. Its earnings come from that Sleeper, never from the Rewind before it.
+    expect(dead.phase).toBe("Rewinding");
+    expect(dead.phaseElapsed).toBe(0);
+    expect(dead.style - committed.style).toBeCloseTo(1.25, 10);
+    expect(dead.landedTricks).toEqual(["mach-5"]);
+    expect(dead.attempt).toBe(null);
+  });
+
+  it("cannot be rescued by Gear bought after its exact next-Sleeper preview", () => {
+    const rewinding = { ...automaticRewind(["mach-5"]), style: 1e6 };
+    expect(previewNamedAttempt(rewinding, "eli-hops")?.outcome).toEqual({
+      lands: false,
+      secondsUntilDeath: 2.5,
+    });
+
+    let afterCommitment = attemptNamedTrick(rewinding, "eli-hops");
+    for (let level = 0; level < 5; level++) {
+      afterCommitment = buyThrowPower(afterCommitment);
+      afterCommitment = buyBearing(afterCommitment);
+      afterCommitment = buyRewindSpeed(afterCommitment);
+    }
+
+    const nextSleeper = advance(afterCommitment, 2);
+    expect(nextSleeper.throwPowerLevel).toBe(5);
+    expect(nextSleeper.bearingLevel).toBe(5);
+    expect(nextSleeper.rewindSpeedLevel).toBe(5);
+    expect(nextSleeper.spin).toBe(200);
+    expect(nextSleeper.activeThrowGear).toEqual({ bearingLevel: 5, rewindSpeedLevel: 5 });
+
+    const dead = advance(nextSleeper, 2.5);
+    expect(projectedYield(nextSleeper)).toBeCloseTo(dead.style - nextSleeper.style, 10);
+    expect(dead.phase).toBe("Rewinding");
+    expect(dead.landedTricks).toEqual(["mach-5"]);
+  });
+
+  it("keeps a safe preview exact while later Gear belongs to the actual Throw Cycle", () => {
+    const rewinding = { ...automaticRewind(["mach-5"]), style: 1e6 };
+    const committed = attemptNamedTrick(rewinding, "rock-the-baby");
+    let afterCommitment = committed;
+    for (let level = 0; level < 5; level++) {
+      afterCommitment = buyThrowPower(afterCommitment);
+      afterCommitment = buyBearing(afterCommitment);
+      afterCommitment = buyRewindSpeed(afterCommitment);
+    }
+
+    const landed = advance(afterCommitment, 3.5);
+
+    expect(landed.landedTricks).toEqual(["mach-5", "rock-the-baby"]);
+    expect(landed.spin).toBeCloseTo(55, 10);
+    expect(landed.activeThrowGear).toEqual({ bearingLevel: 5, rewindSpeedLevel: 5 });
+  });
+
+  it("agrees across Rewind and the next Sleeper in one long advance or many watched ticks", () => {
+    const committed = attemptNamedTrick(automaticRewind(["mach-5"]), "rock-the-baby");
+
+    const returned = advance(committed, EIGHT_HOURS);
+    let watched = committed;
+    for (let second = 0; second < EIGHT_HOURS; second++) watched = advance(watched, 1);
+
+    expect(returned.landedTricks).toEqual(["mach-5", "rock-the-baby"]);
+    expect(watched.phase).toBe(returned.phase);
+    expect(watched.attempt).toEqual(returned.attempt);
+    expect(watched.spin).toBeCloseTo(returned.spin, 10);
+    expect(watched.style).toBeCloseTo(returned.style, 8);
+    expect(watched.lifetimeStyle).toBeCloseTo(returned.lifetimeStyle, 8);
   });
 });
 

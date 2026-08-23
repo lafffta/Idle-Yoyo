@@ -141,12 +141,14 @@ export type TrickRow = {
   styleMultiplier: number;
   effectDescription: string | null;
   status: TrickRowStatus;
-  /** Whether this row can be begun on the live Sleeper right now. */
+  /** Whether this row can be committed right now, on a Sleeper or through Mach 5 during Rewind. */
   canAttempt: boolean;
   /** Whether beginning it now would land it. `null` when it cannot be begun. */
   lands: boolean | null;
   /** The Trick this row waits on. Only ever set on a locked row. */
   requires: string | null;
+  /** Whether this row waits for the Auto-Thrower rather than an earlier Trick. */
+  requiresAutoThrower: boolean;
 };
 
 export type TrickGroup = {
@@ -166,8 +168,10 @@ export type TrickGroup = {
  */
 export type TrickDivision = {
   groups: TrickGroup[];
-  /** The Trick being performed right now, or `null`. */
+  /** The Trick committed right now, or `null`. */
   attempting: string | null;
+  /** Whether that commitment is performing or waiting for its Sleeper. */
+  attemptPhase: GameState["phase"] | null;
 };
 
 function trickDivision(state: GameState): TrickDivision {
@@ -198,10 +202,12 @@ function trickDivision(state: GameState): TrickDivision {
           canAttempt: preview !== null,
           lands: preview?.outcome.lands ?? null,
           requires: landed || reachable ? null : (previous?.name ?? null),
+          requiresAutoThrower: !landed && !reachable && trick.requiresAutoThrower,
         };
       }),
     })),
     attempting: performing?.trick.name ?? null,
+    attemptPhase: performing === null ? null : state.phase,
   };
 }
 
@@ -298,6 +304,7 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
 
   const sameTrickDivision = (nextDivision: TrickDivision) =>
     currentTrickDivision.attempting === nextDivision.attempting &&
+    currentTrickDivision.attemptPhase === nextDivision.attemptPhase &&
     currentTrickDivision.groups.every((group, groupIndex) => {
       const nextGroup = nextDivision.groups[groupIndex];
       return (

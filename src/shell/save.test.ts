@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   advance,
   attemptTrick,
+  autoThrowerCost,
   buyAutoThrower,
   buyThrowPower,
   initialState,
@@ -234,6 +235,23 @@ describe("a saved Trick", () => {
     expect(loaded?.state.landedTricks).toEqual(["eli-hops", "cold-fusion"]);
   });
 
+  it("round-trips an Attempt committed during Rewind without moving the save version", () => {
+    const automatic = buyAutoThrower({ ...initialState(), style: autoThrowerCost() });
+    const rewinding = advance(
+      { ...throwYoyo(automatic), landedTricks: ["mach-5"] },
+      6,
+    );
+    const committed = attemptTrick(rewinding, "rock-the-baby");
+    const saved = { savedAt: 12_345, state: committed };
+
+    expect(committed).toMatchObject({
+      phase: "Rewinding",
+      attempt: { trickId: "rock-the-baby", remaining: 1.5 },
+    });
+    expect(deserializeSave(serializeSave(saved))).toEqual(saved);
+    expect(deserializeSave(serializeSave(saved))?.state.version).toBe(3);
+  });
+
   /**
    * A document naming a Trick this build does not ship would reach `trickMultiplier`, which
    * throws on one. Turned away here so that it becomes the preserved-and-restarted path the
@@ -248,7 +266,7 @@ describe("a saved Trick", () => {
     expect(() => deserializeSave(document)).toThrow();
   });
 
-  it("refuses a Trick being performed on a yoyo that is not spinning", () => {
+  it("refuses a Trick committed during Rewind without the landed permission", () => {
     const winding = advance(throwYoyo(initialState()), 6);
     const document = JSON.stringify({
       savedAt: 8_000,
@@ -256,6 +274,41 @@ describe("a saved Trick", () => {
     });
 
     expect(winding.phase).toBe("Rewinding");
+    expect(() => deserializeSave(document)).toThrow();
+  });
+
+  it("refuses a promised Rewind Attempt on its Sleeper without the landed permission", () => {
+    const document = JSON.stringify({
+      savedAt: 8_000,
+      state: {
+        ...throwYoyo(initialState()),
+        attempt: {
+          trickId: "rock-the-baby",
+          remaining: 1,
+          promisedThrow: { throwPowerLevel: 0, bearingLevel: 0 },
+        },
+      },
+    });
+
+    expect(() => deserializeSave(document)).toThrow();
+  });
+
+  it("refuses a Rewind commitment without the promised next Throw", () => {
+    const rewinding = advance(
+      {
+        ...throwYoyo(buyAutoThrower({ ...initialState(), style: autoThrowerCost() })),
+        landedTricks: ["mach-5"],
+      },
+      6,
+    );
+    const document = JSON.stringify({
+      savedAt: 8_000,
+      state: {
+        ...rewinding,
+        attempt: { trickId: "rock-the-baby", remaining: 1.5 },
+      },
+    });
+
     expect(() => deserializeSave(document)).toThrow();
   });
 

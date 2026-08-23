@@ -128,6 +128,31 @@ describe("returning from an Absence", () => {
     expect(markup).toContain("It also landed Cold Fusion while you were away.");
   });
 
+  it("names Mach 5 when the Split Bottom Mount lands while the player is away", () => {
+    const attempting = attemptTrick(
+      { ...gearedFreshSleeper(12), hasAutoThrower: true },
+      "mach-5",
+    );
+    const store = restoreAfterAbsence(attempting, 8 * 60 * 60);
+
+    const markup = renderToStaticMarkup(<App store={store} />);
+
+    expect(markup).toContain("It also landed Mach 5 while you were away.");
+  });
+
+  it("names an Attempt committed during Rewind when it resolves through an Absence", () => {
+    const rewinding = advance(
+      { ...sleeperWithAutoThrower(), landedTricks: ["mach-5"] },
+      6,
+    );
+    const committed = attemptTrick(rewinding, "rock-the-baby");
+    const store = restoreAfterAbsence(committed, 8 * 60 * 60);
+
+    const markup = renderToStaticMarkup(<App store={store} />);
+
+    expect(markup).toContain("It also landed Rock the Baby while you were away.");
+  });
+
   it("names the Attempt that killed the Yoyo while the player was away", () => {
     const doomed = attemptTrick(advance(throwYoyo(initialState()), 3.5), "rock-the-baby");
     const store = restoreAfterAbsence(doomed, 8 * 60 * 60);
@@ -203,7 +228,7 @@ function trickDivisionMarkup(store: GameStore): string {
 }
 
 describe("the 1A Division", () => {
-  it("shows the ordered spine and both Mounts with all opening choices actionable", () => {
+  it("shows the opening Mounts and holds Split Bottom Mount until the Auto-Thrower", () => {
     const store = createGameStore({ now: () => 0 });
 
     const ladder = trickDivisionMarkup(store);
@@ -212,6 +237,8 @@ describe("the 1A Division", () => {
     expect(ladder).toContain("Spine");
     expect(ladder).toContain("Trapeze Mount");
     expect(ladder).toContain("Double-or-Nothing Mount");
+    expect(ladder).toContain("Split Bottom Mount");
+    expect(ladder).toContain("Mach 5");
     expect(ladder).toContain(
       "Attempts drain Spin. Landing a Trick changes every Throw after it. Run out of Spin and the Yoyo dies.",
     );
@@ -223,6 +250,7 @@ describe("the 1A Division", () => {
     );
     expect(ladder.indexOf("Brain Twister")).toBeLessThan(ladder.indexOf("Eli Hops"));
     expect(ladder.indexOf("Eli Hops")).toBeLessThan(ladder.indexOf("Cold Fusion"));
+    expect(ladder.indexOf("Cold Fusion")).toBeLessThan(ladder.indexOf("Mach 5"));
 
     // The later rows say what opens them rather than offering an action that would be refused.
     expect(ladder).toContain("Land Rock the Baby first");
@@ -232,12 +260,26 @@ describe("the 1A Division", () => {
       "Throw Power packs more Spin into every Throw without making Sleepers longer.",
     );
     expect(ladder).toContain("Landing pays Style equal to the Spin left above Cold Fusion");
+    expect(ladder).toContain("Own the Auto-Thrower first");
     expect(ladder.match(/<button/g)).toHaveLength(3);
     expect(ladder).toMatch(
       /<button(?![^>]*disabled)[^>]*>Attempt Rock the Baby<\/button>/,
     );
     expect(ladder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
     expect(ladder).toContain("Runs out of Spin after 2.22s, and the Yoyo dies.");
+  });
+
+  it("makes Split Bottom Mount actionable on an automated Sleeper", () => {
+    const store = createGameStore({
+      now: () => 0,
+      restored: { tickedAt: 0, state: sleeperWithAutoThrower() },
+    });
+
+    const ladder = trickDivisionMarkup(store);
+
+    expect(ladder).not.toContain("Own the Auto-Thrower first");
+    expect(ladder.match(/<button/g)).toHaveLength(4);
+    expect(ladder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
   });
 
   it("does not advertise Divisions whose progression does not exist", () => {
@@ -332,6 +374,33 @@ describe("the 1A Division", () => {
     expect(ladder).toContain("Available while the yoyo is a Sleeper.");
   });
 
+  it("quotes and commits the next Attempt during Rewind after Mach 5 has landed", () => {
+    const rewinding = advance(
+      { ...sleeperWithAutoThrower(), landedTricks: ["mach-5"] },
+      6,
+    );
+    const store = createGameStore({
+      now: () => 0,
+      restored: { tickedAt: 0, state: rewinding },
+    });
+
+    const before = trickDivisionMarkup(store);
+    expect(before).toContain("Lands with 55 Spin still turning.");
+    expect(before).toMatch(
+      /<button(?![^>]*disabled)[^>]*>Attempt Rock the Baby<\/button>/,
+    );
+
+    store.attemptTrick("rock-the-baby");
+    const after = renderToStaticMarkup(<App store={store} />);
+
+    expect(after).toContain(
+      "Rock the Baby committed during Rewind. It begins on the next Sleeper and cannot be cancelled.",
+    );
+    expect(after).toContain(
+      'aria-label="Rock the Baby: an Attempt committed during Rewind for the next Sleeper"',
+    );
+  });
+
   it("shows the committed Attempt as uncancellable while it runs", () => {
     let now = 0;
     const store = createGameStore({ now: () => now });
@@ -417,6 +486,19 @@ describe("the 1A Division", () => {
 
     expect(renderToStaticMarkup(<App store={secondMountStore} />)).toContain(
       'aria-label="Cold Fusion: an Attempt in progress on the Sleeper"',
+    );
+
+    const splitBottomStore = createGameStore({
+      now: () => now,
+      restored: {
+        tickedAt: now,
+        state: { ...gearedFreshSleeper(12), hasAutoThrower: true },
+      },
+    });
+    splitBottomStore.attemptTrick("mach-5");
+
+    expect(renderToStaticMarkup(<App store={splitBottomStore} />)).toContain(
+      'aria-label="Mach 5: an Attempt in progress on the Sleeper"',
     );
   });
 
