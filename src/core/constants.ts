@@ -84,48 +84,81 @@ export const PROVISIONAL = {
 } as const;
 
 /**
- * PROVISIONAL — the 1A Division, in the only order its Tricks may be landed in. Every figure
- * below is a placeholder under exactly the rule the file opens with, and the ladder lives here
- * rather than beside the simulation so that the balance stays in one file (ADR 0009).
+ * PROVISIONAL — the opening 1A content. The spine keeps the order below; Mount Tricks sit beside
+ * it and may be landed whenever their Mount is reachable. Every figure is a placeholder under
+ * exactly the rule the file opens with, and the content lives here rather than beside the
+ * simulation so that the balance stays in one file (ADR 0009).
  *
- * A row is three numbers and no derived rate. `spinDrainMultiplier` multiplies the decay rate
- * of the Throw already on the string for `durationSeconds`, which is ADR 0014's whole decision:
+ * A row carries authored figures and no derived rate. `spinDrainMultiplier` multiplies the decay
+ * rate of the Throw already on the string for `durationSeconds`, which is ADR 0014's whole decision:
  * an Attempt costs `durationSeconds × spinDrainMultiplier × D`, so a better Bearing makes every
  * Trick safer without any Trick knowing the Bearing exists, and a flat Spin fee would have made
  * the Bearing incidental to the content ladder. Nothing stores that product — the Bearing moves
  * `D`, and a save holding the answer would come back quoting a difficulty from before a
  * rebalance.
  *
- * The durations and the Style multipliers are the plan's (`docs/plans/first-1a-trick-slice.md`).
- * The drain multipliers are not: they are the first guess at the difficulty curve, and only Rock
- * the Baby's has been checked against anything. At the constants as they stand it costs 45 of an
+ * The spine durations and Style multipliers are the plan's
+ * (`docs/plans/first-1a-trick-slice.md`). The drain multipliers and Mount effect are first guesses
+ * at the difficulty curve. At the constants as they stand Rock the Baby costs 45 of an
  * opening Throw's 100 Spin, so it lands from any moment before 2.75s of a 5s Sleeper — at 2.75s
  * exactly the Spin runs out as the Trick finishes, which is a death — leaving over half the
  * opening Sleeper safe, which is the "safely lands on the opening Throw before any Gear
- * purchase" the plan asks of this row. `simulation.test.ts` holds that as a behavioural guard.
- * #71 is where the whole ladder meets the tuning harness and the other two rows are measured;
- * until then their multipliers are unverified against the pacing contract.
+ * purchase" the plan asks of this row. `simulation.test.ts` holds that as a behavioural guard,
+ * and the tuning pacing tests place every shipped Trick in the canonical run. #85 rechecks the
+ * Mount timing when the simulated player stops taking simultaneous choices spine-first.
  */
-export const TRICKS_1A = [
+export const SPINE_TRICKS_1A = [
   {
     id: "rock-the-baby",
     name: "Rock the Baby",
+    kind: "style",
     durationSeconds: 1.5,
     styleMultiplier: 1.25,
     spinDrainMultiplier: 1.5,
+    throwPowerSpinMultiplier: 1,
+    effectDescription: null,
   },
   {
     id: "man-on-the-flying-trapeze",
     name: "Man on the Flying Trapeze",
+    kind: "style",
     durationSeconds: 2.5,
     styleMultiplier: 1.5,
     spinDrainMultiplier: 2,
+    throwPowerSpinMultiplier: 1,
+    effectDescription: null,
   },
   {
     id: "brain-twister",
     name: "Brain Twister",
+    kind: "style",
     durationSeconds: 4,
     styleMultiplier: 2,
     spinDrainMultiplier: 2.5,
+    throwPowerSpinMultiplier: 1,
+    effectDescription: null,
   },
+] as const;
+
+export const TRAPEZE_MOUNT_TRICKS_1A = [
+  {
+    id: "eli-hops",
+    name: "Eli Hops",
+    kind: "structural",
+    durationSeconds: 4,
+    styleMultiplier: 1,
+    spinDrainMultiplier: 2,
+    /** How much more Spin Throw Power becomes once Eli Hops has landed. */
+    throwPowerSpinMultiplier: 1.5,
+    effectDescription:
+      "Throw Power packs more Spin into every Throw without making Sleepers longer.",
+  },
+] as const;
+
+export const TRICKS_1A = [...SPINE_TRICKS_1A, ...TRAPEZE_MOUNT_TRICKS_1A] as const;
+
+/** The authored groups shown inside the 1A Division, in display order. */
+export const TRICK_GROUPS_1A = [
+  { id: "spine", name: "Spine", tricks: SPINE_TRICKS_1A },
+  { id: "trapeze-mount", name: "Trapeze Mount", tricks: TRAPEZE_MOUNT_TRICKS_1A },
 ] as const;

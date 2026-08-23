@@ -1,11 +1,17 @@
-import { PROVISIONAL, TRICKS_1A } from "./constants.js";
+import {
+  PROVISIONAL,
+  SPINE_TRICKS_1A,
+  TRAPEZE_MOUNT_TRICKS_1A,
+  TRICK_GROUPS_1A,
+  TRICKS_1A,
+} from "./constants.js";
 
 /**
- * The ladder itself, re-exported so that everything outside the core reaches it through the one
- * module ADR 0008 puts the simulation behind. A shell drawing the 1A Division reads its rows
- * from here and their order from the order they are in.
+ * The 1A content, re-exported so that everything outside the core reaches it through the one
+ * module ADR 0008 puts the simulation behind. A shell reads the authored groups for structure;
+ * save and tuning code read the flat collection when they need to validate every Trick.
  */
-export { TRICKS_1A };
+export { TRICK_GROUPS_1A, TRICKS_1A };
 
 /**
  * The simulation core (ADR 0008). Everything here is a pure function of the state it is given.
@@ -35,10 +41,10 @@ export type ActiveThrowGear = {
 };
 
 /**
- * One row of a Division's ladder: a name, how long performing it takes, what landing it
- * multiplies Style by forever, and how much harder it drives the Sleeper while it runs.
+ * One row of a Division: a name, how long performing it takes, its permanent landed effect,
+ * and how much harder it drives the Sleeper while it runs.
  *
- * The shape is read off the ladder rather than declared over it, so `constants.ts` stays the one
+ * The shape is read off the content rather than declared over it, so `constants.ts` stays the one
  * place a figure can be changed and there is no second declaration to drift from it.
  */
 export type Trick = (typeof TRICKS_1A)[number];
@@ -135,9 +141,11 @@ export function initialState(): GameState {
   };
 }
 
-/** Derived from the Gear level, never stored. */
+/** Derived from the Gear level and landed Trick facts, never stored. */
 export function throwPower(state: GameState): number {
-  return PROVISIONAL.baseThrowPower + PROVISIONAL.throwPowerPerLevel * state.throwPowerLevel;
+  const ordinary =
+    PROVISIONAL.baseThrowPower + PROVISIONAL.throwPowerPerLevel * state.throwPowerLevel;
+  return ordinary * throwPowerSpinMultiplier(state);
 }
 
 /** What the next level of Throw Power costs. Geometric in the levels already owned. */
@@ -161,18 +169,25 @@ export function buyThrowPower(state: GameState): GameState {
   return { ...state, style: state.style - cost, throwPowerLevel: state.throwPowerLevel + 1 };
 }
 
-function decayRateAtLevel(level: number): number {
-  return PROVISIONAL.baseDecay * PROVISIONAL.bearingDecayPerLevel ** level;
+function decayRateAtLevel(level: number, state: GameState): number {
+  // A Structural Trick packs more Spin into each unit of Throw Power, so that denser Spin is
+  // spent at the same proportionally denser rate. Sleeper length and therefore Uptime stay put;
+  // the conversion raises the Power ceiling without becoming a second Bearing effect (ADR 0003).
+  return (
+    PROVISIONAL.baseDecay *
+    PROVISIONAL.bearingDecayPerLevel ** level *
+    throwPowerSpinMultiplier(state)
+  );
 }
 
 /** The decay rate of the Sleeper currently on the string. */
 export function decayRate(state: GameState): number {
-  return decayRateAtLevel(state.activeThrowGear.bearingLevel);
+  return decayRateAtLevel(state.activeThrowGear.bearingLevel, state);
 }
 
 /** The decay rate the next Throw will capture from the Bearing the player owns. */
 function ownedDecayRate(state: GameState): number {
-  return decayRateAtLevel(state.bearingLevel);
+  return decayRateAtLevel(state.bearingLevel, state);
 }
 
 /** What the next level of the Bearing costs. Geometric in the levels already owned. */
@@ -313,15 +328,21 @@ export function trickById(id: TrickId): Trick {
 
 /**
  * Every Trick the player's landed facts make reachable, whether or not one can be Attempted this
- * instant. The opening spine yields at most one until #82 teaches this query about Mounts.
+ * instant. The spine contributes its first unlanded row while each Mount contributes its own
+ * unlanded rows, so independent groups can be offered together.
  */
 export function reachableTricks(state: GameState): Trick[] {
-  const next = TRICKS_1A.find((trick) => !state.landedTricks.includes(trick.id)) ?? null;
-  return next === null ? [] : [next];
+  const nextSpineTrick =
+    SPINE_TRICKS_1A.find((trick) => !state.landedTricks.includes(trick.id)) ?? null;
+  const mountTricks = TRAPEZE_MOUNT_TRICKS_1A.filter(
+    (trick) => !state.landedTricks.includes(trick.id),
+  );
+
+  return nextSpineTrick === null ? [...mountTricks] : [nextSpineTrick, ...mountTricks];
 }
 
 /**
- * Every Trick the player may Attempt this instant — at most one until #82 opens the first Mounts.
+ * Every Trick the player may Attempt this instant.
  *
  * ADR 0004 has no declared Gear requirement: a reachable Trick remains Attemptable even when the
  * preview says the Sleeper cannot sustain it. Action state is also part of the answer, so there is
@@ -344,6 +365,20 @@ export function attemptableTricks(state: GameState): Trick[] {
  */
 function trickMultiplier(state: GameState): number {
   return state.landedTricks.reduce((product, id) => product * trickById(id).styleMultiplier, 1);
+}
+
+/** How densely the player's Throw Power is packed into Spin, derived only from landed Tricks. */
+function throwPowerSpinMultiplier(state: GameState): number {
+  return state.landedTricks.reduce(
+    (product, id) => product * trickById(id).throwPowerSpinMultiplier,
+    1,
+  );
+}
+
+/** How landing this Trick repacks the Spin left on its current Sleeper. */
+function landingSpinPacking(state: GameState, trick: Trick): number {
+  const afterLanding = { ...state, landedTricks: [...state.landedTricks, trick.id] };
+  return throwPowerSpinMultiplier(afterLanding) / throwPowerSpinMultiplier(state);
 }
 
 /**
@@ -383,10 +418,10 @@ function attemptDrain(state: GameState, trick: Trick): number {
  */
 function attemptOutcome(state: GameState, trick: Trick, remaining: number): AttemptOutcome {
   const drain = attemptDrain(state, trick);
-  const spinOnLanding = state.spin - drain * remaining;
+  const spinBeforeLanding = state.spin - drain * remaining;
 
-  return spinOnLanding > 0
-    ? { lands: true, spinOnLanding }
+  return spinBeforeLanding > 0
+    ? { lands: true, spinOnLanding: spinBeforeLanding * landingSpinPacking(state, trick) }
     : { lands: false, secondsUntilDeath: state.spin / drain };
 }
 
@@ -578,13 +613,15 @@ export function advance(state: GameState, seconds: number): GameState {
     } else if (attempt !== null && landsAt !== null) {
       // Landed, and the Sleeper it was landed on carries on with the Spin it has left. The Trick
       // is a permanent fact from this instant: everything the rest of this Throw earns is already
-      // multiplied by it, and so is the next Trick's row, which may be Attempted straight away.
+      // changed by it, and any newly reachable rows may be Attempted straight away.
+      const landedTricks = [...current.landedTricks, attempt.trickId];
+      const spinPacking = landingSpinPacking(current, trickById(attempt.trickId));
       current = {
         ...banked,
-        spin: current.spin - decay * dt,
+        spin: (current.spin - decay * dt) * spinPacking,
         phaseElapsed: current.phaseElapsed + dt,
         attempt: null,
-        landedTricks: [...current.landedTricks, attempt.trickId],
+        landedTricks,
       };
     } else {
       // The Dead Yoyo is the instant Spin reaches zero, not a phase to sit in. An Attempt that
@@ -694,6 +731,8 @@ export function projectedYield(state: GameState): number {
 
   const untilItLands =
     perSpin * (state.spin * attempt.remaining - (drain * attempt.remaining ** 2) / 2);
-  const afterItLands = (perSpin * trick.styleMultiplier * outcome.spinOnLanding ** 2) / (2 * decay);
+  const spinPacking = landingSpinPacking(state, trick);
+  const afterItLands =
+    (perSpin * trick.styleMultiplier * outcome.spinOnLanding ** 2) / (2 * decay * spinPacking);
   return untilItLands + afterItLands;
 }

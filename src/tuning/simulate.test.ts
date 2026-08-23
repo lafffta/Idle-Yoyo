@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  decayRate,
+  initialState,
+  rewindDuration,
+  throwPower,
+  throwYoyo,
+  type GameState,
+} from "../core/simulation.js";
 import type { Report } from "./simulate.js";
 import { simulate } from "./simulate.js";
 import type { Timeline } from "./timeline.js";
@@ -316,16 +324,15 @@ describe("a player saving up", () => {
 
   it("goes on buying when what it wants is out of reach of the whole run", () => {
     // The same day away, and the same Auto-Thrower worth a fortune to a player who could get one
-    // — but only 260 seconds of play in the entire timeline, against the 1,600 the opening rate
-    // needs to bank 500. Saving for it would swallow every second the player has and leave them
-    // holding the price at the moment the run ends, with nothing ahead to earn in.
+    // — but only 240 seconds of play in the entire timeline. Saving for it would swallow the run
+    // and leave the player holding the price with nothing ahead for the machine to earn in.
     //
     // A player who could only rank rows they could afford would be safe from this, and a player
     // who ranked everything and simply waited for the best would buy nothing for 260 seconds and
     // finish the run on the yoyo they started with. Neither is wanted: the row is valued over
     // what would be left after the saving, which here is nothing at all, so it declines itself
     // and the player spends the run improving the yoyo.
-    const report = simulate([session(200), absence(86_400), session(60)]);
+    const report = simulate([session(180), absence(86_400), session(60)]);
 
     expect(report.autoThrower.bought).toBe(false);
     expect(report.sessions[0]?.purchases.length).toBeGreaterThan(0);
@@ -416,14 +423,38 @@ describe("the Auto-Thrower", () => {
     );
 
     expect(nightsWithAnAutoThrower.length).toBeGreaterThan(0);
+    const windows = sessionWindows(CANONICAL_TIMELINE);
     for (const record of nightsWithAnAutoThrower) {
-      // Nothing is bought while the player is away, so the rate through the whole Absence is
-      // the one they left the game at.
-      const rate = report.sessions[record.session - 2]?.sustainedStyleAtClose ?? 0;
-      const night = rate * record.precedingAbsenceSeconds;
+      const previous = report.sessions[record.session - 2];
+      if (previous === undefined) throw new Error("expected a Session before the Absence");
 
-      expect(record.styleEarnedDuringPrecedingAbsence).toBeGreaterThan(0.99 * night);
-      expect(record.styleEarnedDuringPrecedingAbsence).toBeLessThan(1.01 * night);
+      // Nothing is bought while the player is away, so whole cycles earn at the rate the player
+      // left behind. The partial cycle at either edge may differ by at most one whole cycle.
+      const rate = previous.sustainedStyleAtClose;
+      const night = rate * record.precedingAbsenceSeconds;
+      const landedTricks = report.tricks.flatMap((trick) =>
+        trick.landed && trick.atSeconds <= (windows[record.session - 2]?.closed ?? 0)
+          ? [trick.id]
+          : [],
+      );
+      const atRest: GameState = {
+        ...initialState(),
+        throwPowerLevel: previous.gearAtClose.throwPower,
+        bearingLevel: previous.gearAtClose.bearing,
+        rewindSpeedLevel: previous.gearAtClose.rewindSpeed,
+        activeThrowGear: {
+          bearingLevel: previous.gearAtClose.bearing,
+          rewindSpeedLevel: previous.gearAtClose.rewindSpeed,
+        },
+        hasAutoThrower: true,
+        landedTricks,
+      };
+      const thrown = throwYoyo(atRest);
+      const cycleSeconds = throwPower(atRest) / decayRate(thrown) + rewindDuration(thrown);
+      const oneCycle = rate * cycleSeconds;
+
+      expect(record.styleEarnedDuringPrecedingAbsence).toBeGreaterThan(night - oneCycle);
+      expect(record.styleEarnedDuringPrecedingAbsence).toBeLessThan(night + oneCycle);
     }
   });
 });
@@ -475,11 +506,11 @@ describe("the Report's headline facts", () => {
     );
   });
 
-  it("says what the nights would have been worth even when the player never automated", () => {
+  it("says what time away would have been worth even when the player never automated", () => {
     // The case the instrument exists for. With no Absence a machine ever worked through there is
     // nothing measured to compare against, so a refusal would otherwise print as a blank — and a
     // designer asking whether 500 is the wrong price would be told nothing at all.
-    const report = simulate([session(3_600), absence(1), session(60)]);
+    const report = simulate([session(40), absence(3_600), session(60)]);
 
     expect(report.autoThrower.bought).toBe(false);
     expect(report.absencesWithAutoThrower.absences).toBe(0);

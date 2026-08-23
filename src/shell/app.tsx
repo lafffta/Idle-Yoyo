@@ -8,7 +8,7 @@ import type {
   GameStore,
   GearOffer,
   GearShop as GearShopState,
-  TrickLadder as TrickLadderState,
+  TrickDivision as TrickDivisionState,
   TrickRow as TrickRowState,
 } from "./store.js";
 import { YoyoCanvas } from "./yoyo-canvas.js";
@@ -22,8 +22,8 @@ const THROW_READY_COPY = "Ready to Throw.";
 const THROW_WAITING_COPY = "Available when the yoyo is back in hand.";
 
 /** The plan's onboarding line, kept inline and non-blocking rather than behind a second modal. */
-const TRICK_LADDER_COPY =
-  "Attempts drain Spin. Land a Trick to multiply Style permanently. Run out of Spin and the Yoyo dies.";
+const TRICK_DIVISION_COPY =
+  "Attempts drain Spin. Landing a Trick changes every Throw after it. Run out of Spin and the Yoyo dies.";
 const ATTEMPT_WAITING_COPY = "Available while the yoyo is a Sleeper.";
 
 function UnreadableSaveWarning() {
@@ -276,42 +276,48 @@ function AttemptForecast({ store, trickId }: AppProps & { trickId: TrickRowState
 
 function TrickRow({
   row,
-  ladder,
+  division,
   store,
 }: {
   row: TrickRowState;
-  ladder: TrickLadderState;
+  division: TrickDivisionState;
   store: GameStore;
 }) {
-  const isNext = row.status === "next";
+  const isAttemptable = row.status === "attemptable";
 
   return (
     <article className={`trick-row is-${row.status}`}>
       <div className="trick-copy">
-        <h3>{row.name}</h3>
+        <h4>{row.name}</h4>
         <span className="trick-terms">
-          {formatNumber(row.durationSeconds)}s · ×{formatNumber(row.styleMultiplier)} Style
+          {formatNumber(row.durationSeconds)}s ·{" "}
+          {row.kind === "style"
+            ? `×${formatNumber(row.styleMultiplier)} Style`
+            : "Structural Trick"}
         </span>
-        {isNext && ladder.attempting !== null ? (
+        {row.kind === "style" ? null : (
+          <p className="trick-effect">{row.effectDescription}</p>
+        )}
+        {isAttemptable && division.attempting !== null ? (
           <p className="trick-forecast" aria-live="polite">
-            {ladder.attempting} in progress. An Attempt cannot be cancelled.
+            {division.attempting} in progress. An Attempt cannot be cancelled.
           </p>
         ) : null}
-        {isNext && ladder.attempting === null ? (
+        {isAttemptable && division.attempting === null ? (
           <AttemptForecast store={store} trickId={row.id} />
         ) : null}
       </div>
 
-      {isNext ? (
+      {isAttemptable ? (
         <div className="trick-purchase">
           <button
             className="action-button trick-attempt-button"
             type="button"
-            disabled={!ladder.attemptable}
+            disabled={!row.canAttempt}
             onClick={() => store.attemptTrick(row.id)}
           >
             {/* Never refused for being fatal: the player has been shown the cost (ADR 0004). */}
-            {ladder.lands === false ? "Attempt anyway" : `Attempt ${row.name}`}
+            {row.lands === false ? "Attempt anyway" : `Attempt ${row.name}`}
           </button>
         </div>
       ) : (
@@ -324,28 +330,42 @@ function TrickRow({
 }
 
 /**
- * The 1A Division: every Trick the slice ships, in the order they must be landed. No 2A–5A rows
- * — the plan asks that locked Divisions are not advertised before their progression exists.
+ * The 1A Division: its ordered spine and its independent Mount groups. No 2A–5A rows — their
+ * progression does not exist yet, so the shell does not advertise them.
  */
-function TrickLadder({ store }: AppProps) {
-  const ladder = useSyncExternalStore(
-    store.subscribeToTrickLadder,
-    store.getTrickLadder,
-    store.getTrickLadder,
+function TrickDivision({ store }: AppProps) {
+  const division = useSyncExternalStore(
+    store.subscribeToTrickDivision,
+    store.getTrickDivision,
+    store.getTrickDivision,
   );
 
   return (
-    <section className="trick-ladder" aria-labelledby="trick-ladder-heading">
-      <div className="trick-ladder-heading">
+    <section className="trick-division" aria-labelledby="trick-division-heading">
+      <div className="trick-division-heading">
         <div>
           <p className="eyebrow">1A Division</p>
-          <h2 id="trick-ladder-heading">Learn a Trick</h2>
+          <h2 id="trick-division-heading">Learn a Trick</h2>
         </div>
-        <p>{TRICK_LADDER_COPY}</p>
+        <p>{TRICK_DIVISION_COPY}</p>
       </div>
-      <div className="trick-list">
-        {ladder.rows.map((row) => (
-          <TrickRow key={row.id} row={row} ladder={ladder} store={store} />
+      <div className="trick-groups">
+        {division.groups.map((group) => (
+          <div
+            className="trick-group"
+            role="group"
+            aria-labelledby={`trick-group-${group.id}`}
+            key={group.id}
+          >
+            <h3 id={`trick-group-${group.id}`} className="trick-group-heading">
+              {group.name}
+            </h3>
+            <div className="trick-list">
+              {group.rows.map((row) => (
+                <TrickRow key={row.id} row={row} division={division} store={store} />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </section>
@@ -486,7 +506,7 @@ export function App({ store, saveWasUnreadable = false }: AppProps) {
         </div>
       </section>
 
-      <TrickLadder store={store} />
+      <TrickDivision store={store} />
 
       <GearShop shop={shop} store={store} />
 

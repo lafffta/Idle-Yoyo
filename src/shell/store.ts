@@ -18,7 +18,7 @@ import {
   throwPowerCost,
   throwYoyo,
   trickById,
-  TRICKS_1A,
+  TRICK_GROUPS_1A,
 } from "../core/simulation.js";
 import { PROVISIONAL_SHELL } from "./constants.js";
 
@@ -131,59 +131,76 @@ function gearShop(state: GameState): GearShop {
   };
 }
 
-export type TrickRowStatus = "landed" | "next" | "locked";
+export type TrickRowStatus = "landed" | "attemptable" | "locked";
 
 export type TrickRow = {
   id: TrickId;
   name: string;
+  kind: "style" | "structural";
   durationSeconds: number;
   styleMultiplier: number;
+  effectDescription: string | null;
   status: TrickRowStatus;
+  /** Whether this row can be begun on the live Sleeper right now. */
+  canAttempt: boolean;
+  /** Whether beginning it now would land it. `null` when it cannot be begun. */
+  lands: boolean | null;
   /** The Trick this row waits on. Only ever set on a locked row. */
   requires: string | null;
 };
 
+export type TrickGroup = {
+  id: string;
+  name: string;
+  rows: TrickRow[];
+};
+
 /**
- * The 1A Division as a shell renders it: every row in ladder order, and the coarse facts about
- * the Attempt on offer.
+ * The 1A Division as a shell renders it: authored groups and rows, with the coarse facts about
+ * every Attempt on offer.
  *
  * What is deliberately *not* here is the exact Spin an Attempt would leave. That figure falls
  * with the Sleeper, so it changes every frame, and putting it in a subscribed snapshot would
  * re-render the ladder sixty times a second to move a decimal. It is read straight from the
  * core instead — see `getAttemptForecast` — exactly as the Style balance already is.
  */
-export type TrickLadder = {
-  rows: TrickRow[];
-  /** Whether the next Trick can be begun this instant. */
-  attemptable: boolean;
-  /** Whether beginning it now would land it. `null` when there is nothing to begin. */
-  lands: boolean | null;
+export type TrickDivision = {
+  groups: TrickGroup[];
   /** The Trick being performed right now, or `null`. */
   attempting: string | null;
 };
 
-function trickLadder(state: GameState): TrickLadder {
-  const [next] = reachableTricks(state);
-  const [attemptable] = attemptableTricks(state);
-  const preview = attemptable === undefined ? null : previewAttempt(state, attemptable.id);
+function trickDivision(state: GameState): TrickDivision {
+  const reachableIds = new Set(reachableTricks(state).map((trick) => trick.id));
+  const previews = new Map(
+    attemptableTricks(state).map((trick) => [trick.id, previewAttempt(state, trick.id)]),
+  );
   const performing = activeAttempt(state);
 
   return {
-    rows: TRICKS_1A.map((trick, index) => {
-      const landed = state.landedTricks.includes(trick.id);
-      const previous = TRICKS_1A[index - 1];
+    groups: TRICK_GROUPS_1A.map((group) => ({
+      id: group.id,
+      name: group.name,
+      rows: group.tricks.map((trick, index) => {
+        const landed = state.landedTricks.includes(trick.id);
+        const reachable = reachableIds.has(trick.id);
+        const preview = previews.get(trick.id) ?? null;
+        const previous = group.tricks[index - 1];
 
-      return {
-        id: trick.id,
-        name: trick.name,
-        durationSeconds: trick.durationSeconds,
-        styleMultiplier: trick.styleMultiplier,
-        status: landed ? "landed" : next?.id === trick.id ? "next" : "locked",
-        requires: landed || next?.id === trick.id ? null : (previous?.name ?? null),
-      };
-    }),
-    attemptable: preview !== null,
-    lands: preview?.outcome.lands ?? null,
+        return {
+          id: trick.id,
+          name: trick.name,
+          kind: trick.kind,
+          durationSeconds: trick.durationSeconds,
+          styleMultiplier: trick.styleMultiplier,
+          effectDescription: trick.effectDescription,
+          status: landed ? "landed" : reachable ? "attemptable" : "locked",
+          canAttempt: preview !== null,
+          lands: preview?.outcome.lands ?? null,
+          requires: landed || reachable ? null : (previous?.name ?? null),
+        };
+      }),
+    })),
     attempting: performing?.trick.name ?? null,
   };
 }
@@ -234,8 +251,8 @@ export type GameStore = {
   getGearShop: () => GearShop;
   subscribeToGearShop: (listener: () => void) => () => void;
   buyGear: (gear: GearId) => void;
-  getTrickLadder: () => TrickLadder;
-  subscribeToTrickLadder: (listener: () => void) => () => void;
+  getTrickDivision: () => TrickDivision;
+  subscribeToTrickDivision: (listener: () => void) => () => void;
   /** The exact outcome of Attempting the named Trick now, read live rather than subscribed. */
   getAttemptForecast: (trickId: TrickId) => AttemptPreview | null;
   attemptTrick: (trickId: TrickId) => void;
@@ -261,10 +278,10 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
   const persistedChangeListeners = new Set<() => void>();
   const gearShopListeners = new Set<() => void>();
   const autoThrowerOfferListeners = new Set<() => void>();
-  const trickLadderListeners = new Set<() => void>();
+  const trickDivisionListeners = new Set<() => void>();
   let currentGearShop = gearShop(state);
   let currentAutoThrowerOffer = autoThrowerOffer(state);
-  let currentTrickLadder = trickLadder(state);
+  let currentTrickDivision = trickDivision(state);
 
   const sameGearShop = (nextShop: GearShop) =>
     currentGearShop.sustainedStyle === nextShop.sustainedStyle &&
@@ -279,13 +296,24 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
       );
     });
 
-  const sameTrickLadder = (nextLadder: TrickLadder) =>
-    currentTrickLadder.attemptable === nextLadder.attemptable &&
-    currentTrickLadder.lands === nextLadder.lands &&
-    currentTrickLadder.attempting === nextLadder.attempting &&
-    currentTrickLadder.rows.every((row, index) => {
-      const nextRow = nextLadder.rows[index];
-      return nextRow !== undefined && row.id === nextRow.id && row.status === nextRow.status;
+  const sameTrickDivision = (nextDivision: TrickDivision) =>
+    currentTrickDivision.attempting === nextDivision.attempting &&
+    currentTrickDivision.groups.every((group, groupIndex) => {
+      const nextGroup = nextDivision.groups[groupIndex];
+      return (
+        nextGroup !== undefined &&
+        group.id === nextGroup.id &&
+        group.rows.every((row, rowIndex) => {
+          const nextRow = nextGroup.rows[rowIndex];
+          return (
+            nextRow !== undefined &&
+            row.id === nextRow.id &&
+            row.status === nextRow.status &&
+            row.canAttempt === nextRow.canAttempt &&
+            row.lands === nextRow.lands
+          );
+        })
+      );
     });
 
   const replaceState = (nextState: GameState) => {
@@ -293,7 +321,7 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
     const nextGearShop = gearShop(nextState);
     const shopChanged = !sameGearShop(nextGearShop);
     const nextAutoThrowerOffer = autoThrowerOffer(nextState);
-    const nextTrickLadder = trickLadder(nextState);
+    const nextTrickDivision = trickDivision(nextState);
     const autoThrowerOfferChanged =
       currentAutoThrowerOffer.price !== nextAutoThrowerOffer.price ||
       currentAutoThrowerOffer.affordable !== nextAutoThrowerOffer.affordable ||
@@ -310,9 +338,9 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
       currentAutoThrowerOffer = nextAutoThrowerOffer;
       for (const listener of autoThrowerOfferListeners) listener();
     }
-    if (!sameTrickLadder(nextTrickLadder)) {
-      currentTrickLadder = nextTrickLadder;
-      for (const listener of trickLadderListeners) listener();
+    if (!sameTrickDivision(nextTrickDivision)) {
+      currentTrickDivision = nextTrickDivision;
+      for (const listener of trickDivisionListeners) listener();
     }
   };
 
@@ -404,10 +432,10 @@ export function createGameStore({ now, restored }: GameStoreOptions): GameStore 
       const gear = GEAR.find(({ id }) => id === gearId);
       if (gear) commit(gear.buy(state));
     },
-    getTrickLadder: () => currentTrickLadder,
-    subscribeToTrickLadder: (listener) => {
-      trickLadderListeners.add(listener);
-      return () => trickLadderListeners.delete(listener);
+    getTrickDivision: () => currentTrickDivision,
+    subscribeToTrickDivision: (listener) => {
+      trickDivisionListeners.add(listener);
+      return () => trickDivisionListeners.delete(listener);
     },
     getAttemptForecast: (trickId) => previewAttempt(state, trickId),
     attemptTrick: (trickId) => commit(attemptTrickInCore(state, trickId)),

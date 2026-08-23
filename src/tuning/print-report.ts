@@ -4,9 +4,9 @@ import type { Timeline } from "./timeline.js";
 import { CANONICAL_TIMELINE, FIRST_SESSION_SECONDS } from "./timeline.js";
 
 /**
- * The 1A ladder, one row a line — where the pacing guards in `pacing.test.ts` place Rock the
- * Baby, Man on the Flying Trapeze and Brain Twister against the Auto-Thrower and against each
- * other, read directly rather than cross-referenced against the table above.
+ * The 1A Division, one Trick a line — where the pacing guards in `pacing.test.ts` place its spine
+ * and Mount content against the Auto-Thrower and against each other, read directly rather than
+ * cross-referenced against the table above.
  */
 function describeTricks(report: Report): string[] {
   return report.tricks.map((trick) =>
@@ -283,7 +283,7 @@ export function renderReport(timeline: Timeline, report: Report): string {
     headingRowOf(PURCHASE_COLUMNS),
     ...purchaseRows(report).map((row) => rowOf(PURCHASE_COLUMNS, row)),
     "",
-    "The 1A ladder",
+    "The 1A Division",
     ...describeTricks(report),
     "",
     "The Auto-Thrower",
