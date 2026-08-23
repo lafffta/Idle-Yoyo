@@ -173,7 +173,7 @@ describe("a save written before there were any Tricks", () => {
 });
 
 describe("a saved Trick", () => {
-  it("round-trips a version 3 game from before Mounts without inventing Eli Hops", () => {
+  it("round-trips a version 3 game from before Mounts without inventing later Tricks", () => {
     const state: GameState = {
       ...throwYoyo(initialState()),
       style: 42.5,
@@ -195,6 +195,7 @@ describe("a saved Trick", () => {
     expect(loaded.state).toEqual(state);
     expect(loaded.state.version).toBe(3);
     expect(loaded.state.landedTricks).not.toContain("eli-hops");
+    expect(loaded.state.landedTricks).not.toContain("cold-fusion");
     expect(deserializeSave(serializeSave(loaded))).toEqual(loaded);
   });
 
@@ -217,6 +218,20 @@ describe("a saved Trick", () => {
       savedAt: 12_345,
       state: midAttempt,
     });
+  });
+
+  it("round-trips both landed Mounts without moving the save version", () => {
+    const state: GameState = {
+      ...throwYoyo(initialState()),
+      landedTricks: ["eli-hops", "cold-fusion"],
+    };
+    const saved = { savedAt: 12_345, state };
+
+    const loaded = deserializeSave(serializeSave(saved));
+
+    expect(loaded).toEqual(saved);
+    expect(loaded?.state.version).toBe(3);
+    expect(loaded?.state.landedTricks).toEqual(["eli-hops", "cold-fusion"]);
   });
 
   /**

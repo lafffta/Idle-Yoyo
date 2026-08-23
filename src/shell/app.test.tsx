@@ -119,6 +119,15 @@ describe("returning from an Absence", () => {
     expect(markup).toContain("It also landed Eli Hops while you were away.");
   });
 
+  it("names Cold Fusion when the Double-or-Nothing Mount lands while the player is away", () => {
+    const attempting = attemptTrick(gearedFreshSleeper(7), "cold-fusion");
+    const store = restoreAfterAbsence(attempting, 8 * 60 * 60);
+
+    const markup = renderToStaticMarkup(<App store={store} />);
+
+    expect(markup).toContain("It also landed Cold Fusion while you were away.");
+  });
+
   it("names the Attempt that killed the Yoyo while the player was away", () => {
     const doomed = attemptTrick(advance(throwYoyo(initialState()), 3.5), "rock-the-baby");
     const store = restoreAfterAbsence(doomed, 8 * 60 * 60);
@@ -194,7 +203,7 @@ function trickDivisionMarkup(store: GameStore): string {
 }
 
 describe("the 1A Division", () => {
-  it("shows the ordered spine and Trapeze Mount with both opening Tricks actionable", () => {
+  it("shows the ordered spine and both Mounts with all opening choices actionable", () => {
     const store = createGameStore({ now: () => 0 });
 
     const ladder = trickDivisionMarkup(store);
@@ -202,6 +211,7 @@ describe("the 1A Division", () => {
     expect(ladder).toContain("1A Division");
     expect(ladder).toContain("Spine");
     expect(ladder).toContain("Trapeze Mount");
+    expect(ladder).toContain("Double-or-Nothing Mount");
     expect(ladder).toContain(
       "Attempts drain Spin. Landing a Trick changes every Throw after it. Run out of Spin and the Yoyo dies.",
     );
@@ -212,6 +222,7 @@ describe("the 1A Division", () => {
       ladder.indexOf("Brain Twister"),
     );
     expect(ladder.indexOf("Brain Twister")).toBeLessThan(ladder.indexOf("Eli Hops"));
+    expect(ladder.indexOf("Eli Hops")).toBeLessThan(ladder.indexOf("Cold Fusion"));
 
     // The later rows say what opens them rather than offering an action that would be refused.
     expect(ladder).toContain("Land Rock the Baby first");
@@ -220,11 +231,13 @@ describe("the 1A Division", () => {
     expect(ladder).toContain(
       "Throw Power packs more Spin into every Throw without making Sleepers longer.",
     );
-    expect(ladder.match(/<button/g)).toHaveLength(2);
+    expect(ladder).toContain("Landing pays Style equal to the Spin left above Cold Fusion");
+    expect(ladder.match(/<button/g)).toHaveLength(3);
     expect(ladder).toMatch(
       /<button(?![^>]*disabled)[^>]*>Attempt Rock the Baby<\/button>/,
     );
     expect(ladder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
+    expect(ladder).toContain("Runs out of Spin after 2.22s, and the Yoyo dies.");
   });
 
   it("does not advertise Divisions whose progression does not exist", () => {
@@ -269,6 +282,27 @@ describe("the 1A Division", () => {
     expect(after).toMatch(
       /<output[^>]*aria-label="Sustained Style"[^>]*>1.15<\/output>/,
     );
+  });
+
+  it("quotes and pays Cold Fusion's exact headroom bonus", () => {
+    let now = 0;
+    const store = createGameStore({
+      now: () => now,
+      restored: { tickedAt: now, state: gearedFreshSleeper(7) },
+    });
+
+    const before = trickDivisionMarkup(store);
+    expect(before).toContain("Lands with 15 Spin still turning and pays 15 Style.");
+
+    store.attemptTrick("cold-fusion");
+    now = 5_000;
+    store.tick();
+
+    const after = renderToStaticMarkup(<App store={store} />);
+    expect(after).toContain("Cold Fusion");
+    expect(after).toContain("Landed");
+    expect(after).not.toContain("Attempt Cold Fusion");
+    expect(after).toMatch(/<output[^>]*aria-label="Current Style"[^>]*>21.4<\/output>/);
   });
 
   it("says exactly when a late Attempt would kill the yoyo, and still offers it", () => {
@@ -374,6 +408,16 @@ describe("the 1A Division", () => {
     expect(renderToStaticMarkup(<App store={mountStore} />)).toContain(
       'aria-label="Eli Hops: an Attempt in progress on the Sleeper"',
     );
+
+    const secondMountStore = createGameStore({
+      now: () => now,
+      restored: { tickedAt: now, state: gearedFreshSleeper(7) },
+    });
+    secondMountStore.attemptTrick("cold-fusion");
+
+    expect(renderToStaticMarkup(<App store={secondMountStore} />)).toContain(
+      'aria-label="Cold Fusion: an Attempt in progress on the Sleeper"',
+    );
   });
 
   /**
@@ -397,7 +441,7 @@ describe("the 1A Division", () => {
     const afterRockTheBaby = trickDivisionMarkup(store);
     expect(afterRockTheBaby).toContain("Land Man on the Flying Trapeze first");
     expect(afterRockTheBaby).not.toContain("Land Rock the Baby first");
-    expect(afterRockTheBaby.match(/<button/g)).toHaveLength(2);
+    expect(afterRockTheBaby.match(/<button/g)).toHaveLength(3);
 
     store.attemptTrick("man-on-the-flying-trapeze");
 
@@ -444,7 +488,7 @@ describe("the 1A Division", () => {
 
     // Between the second landing and the third: Brain Twister and the independent Mount are open.
     const beforeBrainTwister = trickDivisionMarkup(store);
-    expect(beforeBrainTwister.match(/<button/g)).toHaveLength(2);
+    expect(beforeBrainTwister.match(/<button/g)).toHaveLength(3);
     expect(beforeBrainTwister).toMatch(
       /<button(?![^>]*disabled)[^>]*>Attempt Brain Twister<\/button>/,
     );

@@ -261,6 +261,22 @@ describe("the 1A Division", () => {
       FIRST_SESSION_SECONDS,
     );
   });
+
+  /**
+   * The second Mount is measured beside the first. The temporary authored-order policy lands it
+   * after Eli Hops; #85 replaces that ordering assumption with a real choice between Mounts.
+   */
+  it("reports Cold Fusion as the second opening Mount within the first Session", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const eliHops = landingOf(report, "eli-hops");
+    const coldFusion = landingOf(report, "cold-fusion");
+
+    expect(coldFusion.atSeconds).toBeGreaterThan(eliHops.atSeconds);
+    expect(engagedSecondsBy(CANONICAL_TIMELINE, coldFusion.atSeconds)).toBeLessThanOrEqual(
+      FIRST_SESSION_SECONDS,
+    );
+  });
 });
 
 describe("the instrument itself", () => {

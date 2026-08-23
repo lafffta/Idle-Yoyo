@@ -1,7 +1,7 @@
 import {
+  MOUNT_TRICKS_1A,
   PROVISIONAL,
   SPINE_TRICKS_1A,
-  TRAPEZE_MOUNT_TRICKS_1A,
   TRICK_GROUPS_1A,
   TRICKS_1A,
 } from "./constants.js";
@@ -334,7 +334,7 @@ export function trickById(id: TrickId): Trick {
 export function reachableTricks(state: GameState): Trick[] {
   const nextSpineTrick =
     SPINE_TRICKS_1A.find((trick) => !state.landedTricks.includes(trick.id)) ?? null;
-  const mountTricks = TRAPEZE_MOUNT_TRICKS_1A.filter(
+  const mountTricks = MOUNT_TRICKS_1A.filter(
     (trick) => !state.landedTricks.includes(trick.id),
   );
 
@@ -381,6 +381,22 @@ function landingSpinPacking(state: GameState, trick: Trick): number {
   return throwPowerSpinMultiplier(afterLanding) / throwPowerSpinMultiplier(state);
 }
 
+/** The headroom bonus rate the player's landed facts currently grant, never stored in a save. */
+function landingStylePerSpinHeadroom(state: GameState): number {
+  return state.landedTricks.reduce(
+    (sum, id) => sum + trickById(id).landingStylePerSpinHeadroom,
+    0,
+  );
+}
+
+/** The new bonus rate this landing adds, applied to the Spin left above the Attempt's cost. */
+function landingStyleBonus(state: GameState, trick: Trick, spinHeadroom: number): number {
+  const afterLanding = { ...state, landedTricks: [...state.landedTricks, trick.id] };
+  const addedRate =
+    landingStylePerSpinHeadroom(afterLanding) - landingStylePerSpinHeadroom(state);
+  return spinHeadroom * addedRate;
+}
+
 /**
  * The Trick the player may begin this instant, or `null` when they may begin none — there is no
  * live Sleeper, a Trick is already being performed, or every reachable Trick has landed.
@@ -421,7 +437,11 @@ function attemptOutcome(state: GameState, trick: Trick, remaining: number): Atte
   const spinBeforeLanding = state.spin - drain * remaining;
 
   return spinBeforeLanding > 0
-    ? { lands: true, spinOnLanding: spinBeforeLanding * landingSpinPacking(state, trick) }
+    ? {
+        lands: true,
+        spinOnLanding: spinBeforeLanding * landingSpinPacking(state, trick),
+        styleBonus: landingStyleBonus(state, trick, spinBeforeLanding),
+      }
     : { lands: false, secondsUntilDeath: state.spin / drain };
 }
 
@@ -453,7 +473,7 @@ export function attemptTrick(state: GameState, trickId: TrickId): GameState {
  * what the yoyo actually does — the tests measure them by playing the Attempt out.
  */
 export type AttemptOutcome =
-  | { readonly lands: true; readonly spinOnLanding: number }
+  | { readonly lands: true; readonly spinOnLanding: number; readonly styleBonus: number }
   | { readonly lands: false; readonly secondsUntilDeath: number };
 
 /**
@@ -616,8 +636,12 @@ export function advance(state: GameState, seconds: number): GameState {
       // changed by it, and any newly reachable rows may be Attempted straight away.
       const landedTricks = [...current.landedTricks, attempt.trickId];
       const spinPacking = landingSpinPacking(current, trickById(attempt.trickId));
+      const outcome = attemptOutcome(current, trickById(attempt.trickId), attempt.remaining);
+      const styleBonus = outcome.lands ? outcome.styleBonus : 0;
       current = {
         ...banked,
+        style: banked.style + styleBonus,
+        lifetimeStyle: banked.lifetimeStyle + styleBonus,
         spin: (current.spin - decay * dt) * spinPacking,
         phaseElapsed: current.phaseElapsed + dt,
         attempt: null,
@@ -734,5 +758,5 @@ export function projectedYield(state: GameState): number {
   const spinPacking = landingSpinPacking(state, trick);
   const afterItLands =
     (perSpin * trick.styleMultiplier * outcome.spinOnLanding ** 2) / (2 * decay * spinPacking);
-  return untilItLands + afterItLands;
+  return untilItLands + outcome.styleBonus + afterItLands;
 }

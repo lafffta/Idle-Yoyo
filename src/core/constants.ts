@@ -116,6 +116,7 @@ export const SPINE_TRICKS_1A = [
     styleMultiplier: 1.25,
     spinDrainMultiplier: 1.5,
     throwPowerSpinMultiplier: 1,
+    landingStylePerSpinHeadroom: 0,
     effectDescription: null,
   },
   {
@@ -126,6 +127,7 @@ export const SPINE_TRICKS_1A = [
     styleMultiplier: 1.5,
     spinDrainMultiplier: 2,
     throwPowerSpinMultiplier: 1,
+    landingStylePerSpinHeadroom: 0,
     effectDescription: null,
   },
   {
@@ -136,6 +138,7 @@ export const SPINE_TRICKS_1A = [
     styleMultiplier: 2,
     spinDrainMultiplier: 2.5,
     throwPowerSpinMultiplier: 1,
+    landingStylePerSpinHeadroom: 0,
     effectDescription: null,
   },
 ] as const;
@@ -150,15 +153,41 @@ export const TRAPEZE_MOUNT_TRICKS_1A = [
     spinDrainMultiplier: 2,
     /** How much more Spin Throw Power becomes once Eli Hops has landed. */
     throwPowerSpinMultiplier: 1.5,
+    landingStylePerSpinHeadroom: 0,
     effectDescription:
       "Throw Power packs more Spin into every Throw without making Sleepers longer.",
   },
 ] as const;
 
-export const TRICKS_1A = [...SPINE_TRICKS_1A, ...TRAPEZE_MOUNT_TRICKS_1A] as const;
+export const DOUBLE_OR_NOTHING_MOUNT_TRICKS_1A = [
+  {
+    id: "cold-fusion",
+    name: "Cold Fusion",
+    kind: "structural",
+    durationSeconds: 5,
+    styleMultiplier: 1,
+    spinDrainMultiplier: 2.25,
+    throwPowerSpinMultiplier: 1,
+    /** Style paid per unit of Spin left above this Attempt's cost when it lands. */
+    landingStylePerSpinHeadroom: 1,
+    effectDescription: "Landing pays Style equal to the Spin left above Cold Fusion's cost.",
+  },
+] as const;
+
+export const MOUNT_TRICKS_1A = [
+  ...TRAPEZE_MOUNT_TRICKS_1A,
+  ...DOUBLE_OR_NOTHING_MOUNT_TRICKS_1A,
+] as const;
+
+export const TRICKS_1A = [...SPINE_TRICKS_1A, ...MOUNT_TRICKS_1A] as const;
 
 /** The authored groups shown inside the 1A Division, in display order. */
 export const TRICK_GROUPS_1A = [
   { id: "spine", name: "Spine", tricks: SPINE_TRICKS_1A },
   { id: "trapeze-mount", name: "Trapeze Mount", tricks: TRAPEZE_MOUNT_TRICKS_1A },
+  {
+    id: "double-or-nothing-mount",
+    name: "Double-or-Nothing Mount",
+    tricks: DOUBLE_OR_NOTHING_MOUNT_TRICKS_1A,
+  },
 ] as const;

@@ -243,7 +243,9 @@ function attemptForecastCopy(store: GameStore, trickId: TrickRowState["id"]): st
   // Exact, never hedged: linear decay makes the whole Attempt knowable before it begins, and
   // ADR 0007 asks for a figure like this to be stated at full confidence (ADR 0001, ADR 0014).
   return forecast.outcome.lands
-    ? `Lands with ${formatNumber(forecast.outcome.spinOnLanding)} Spin still turning.`
+    ? forecast.outcome.styleBonus > 0
+      ? `Lands with ${formatNumber(forecast.outcome.spinOnLanding)} Spin still turning and pays ${formatNumber(forecast.outcome.styleBonus)} Style.`
+      : `Lands with ${formatNumber(forecast.outcome.spinOnLanding)} Spin still turning.`
     : `Runs out of Spin after ${formatNumber(forecast.outcome.secondsUntilDeath)}s, and the Yoyo dies.`;
 }
 
