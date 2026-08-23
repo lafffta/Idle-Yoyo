@@ -302,7 +302,9 @@ function TrickRow({
         )}
         {isAttemptable && division.attempting !== null ? (
           <p className="trick-forecast" aria-live="polite">
-            {division.attempting} in progress. An Attempt cannot be cancelled.
+            {division.attemptPhase === "Rewinding"
+              ? `${division.attempting} committed during Rewind. It begins on the next Sleeper and cannot be cancelled.`
+              : `${division.attempting} in progress. An Attempt cannot be cancelled.`}
           </p>
         ) : null}
         {isAttemptable && division.attempting === null ? (
@@ -324,7 +326,11 @@ function TrickRow({
         </div>
       ) : (
         <span className="trick-state">
-          {row.status === "landed" ? "Landed" : `Land ${row.requires} first`}
+          {row.status === "landed"
+            ? "Landed"
+            : row.requiresAutoThrower
+              ? "Own the Auto-Thrower first"
+              : `Land ${row.requires} first`}
         </span>
       )}
     </article>

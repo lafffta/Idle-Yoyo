@@ -277,6 +277,24 @@ describe("the 1A Division", () => {
       FIRST_SESSION_SECONDS,
     );
   });
+
+  /**
+   * Split Bottom Mount is post-automation content by construction, not merely by display copy.
+   * The temporary authored-order policy still gets this first slice in front of the player while
+   * the opening Session is live; #85 will remeasure it under explicit Spin partitioning.
+   */
+  it("reports Mach 5 after the Auto-Thrower and within the first Session", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    const mach5 = landingOf(report, "mach-5");
+    const autoThrower = report.autoThrower;
+    if (!autoThrower.bought) throw new Error("the player never bought an Auto-Thrower");
+
+    expect(mach5.atSeconds).toBeGreaterThan(autoThrower.atSeconds);
+    expect(engagedSecondsBy(CANONICAL_TIMELINE, mach5.atSeconds)).toBeLessThanOrEqual(
+      FIRST_SESSION_SECONDS,
+    );
+  });
 });
 
 describe("the instrument itself", () => {

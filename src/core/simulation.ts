@@ -52,19 +52,26 @@ export type Trick = (typeof TRICKS_1A)[number];
 /** How a landed Trick is named in a save. Ids rather than positions: the ladder may grow. */
 export type TrickId = Trick["id"];
 
+type PromisedThrow = {
+  throwPowerLevel: number;
+  bearingLevel: number;
+};
+
 /**
- * A Trick being performed on the Sleeper on the string right now.
+ * A Trick committed by the player.
  *
- * Carries what is left to do and not what it costs to do it. The drain is the active Throw's
- * decay rate multiplied by the Trick's, and both of those are things a rebalance moves; a save
- * holding either would come back quoting a difficulty this build no longer agrees with (ADR
- * 0008), and holding the drain rate in particular would let a Bearing bought mid-Attempt rescue
- * a committed Attempt through the back door ADR 0014 closes.
+ * Once it is performing, it carries what is left to do and not what it costs. A commitment made
+ * during Rewind also carries the Gear levels its exact next-Throw preview used, until the Attempt
+ * resolves. Levels rather than derived Spin or decay keep a saved promise responsive to a
+ * rebalance (ADR 0008), while keeping later Gear purchases from rescuing the commitment through
+ * the back door ADR 0014 closes.
  */
 export type Attempt = {
   trickId: TrickId;
   /** Seconds of the Trick still to perform. The Trick lands when this reaches zero. */
   remaining: number;
+  /** Present from a Rewind commitment until its promised outcome resolves. */
+  promisedThrow?: PromisedThrow;
 };
 
 /**
@@ -117,7 +124,7 @@ export type GameState = {
    * game it is loaded into, with nothing able to tell which figure was meant.
    */
   landedTricks: TrickId[];
-  /** The Trick in progress, or `null`. Meaningful only while `Sleeping`. */
+  /** The committed Trick, or `null`; during Rewind it waits for the next Sleeper. */
   attempt: Attempt | null;
 };
 
@@ -282,12 +289,16 @@ export function buyAutoThrower(state: GameState): GameState {
 /**
  * A Throw is legal only from `Ready`.
  *
- * The fresh Sleeper starts with no Trick in progress. Nothing reaches `Ready` still Attempting —
- * an Attempt either lands or kills the yoyo, and both resolve inside the Sleeper — so this
- * clears a field that is already clear, and is here for the save that arrives saying otherwise.
+ * Ordinarily a fresh Sleeper starts with no Trick in progress. Mach 5 is the exception: it lets
+ * the player commit an Attempt during Rewind, and that waiting Attempt crosses `Ready` untouched
+ * so its ordinary Spin drain begins on this Sleeper rather than during the dead time.
  */
 export function throwYoyo(state: GameState): GameState {
   if (state.phase !== "Ready") return state;
+  const waitingAttempt =
+    state.attempt?.promisedThrow !== undefined && allowsAttemptDuringRewind(state)
+      ? state.attempt
+      : null;
   return {
     ...state,
     phase: "Sleeping",
@@ -297,7 +308,7 @@ export function throwYoyo(state: GameState): GameState {
       bearingLevel: state.bearingLevel,
       rewindSpeedLevel: state.rewindSpeedLevel,
     },
-    attempt: null,
+    attempt: waitingAttempt,
   };
 }
 
@@ -335,10 +346,17 @@ export function reachableTricks(state: GameState): Trick[] {
   const nextSpineTrick =
     SPINE_TRICKS_1A.find((trick) => !state.landedTricks.includes(trick.id)) ?? null;
   const mountTricks = MOUNT_TRICKS_1A.filter(
-    (trick) => !state.landedTricks.includes(trick.id),
+    (trick) =>
+      !state.landedTricks.includes(trick.id) &&
+      (!trick.requiresAutoThrower || state.hasAutoThrower),
   );
 
   return nextSpineTrick === null ? [...mountTricks] : [nextSpineTrick, ...mountTricks];
+}
+
+/** Whether the player's landed facts grant permission to commit an Attempt during Rewind. */
+function allowsAttemptDuringRewind(state: GameState): boolean {
+  return state.landedTricks.some((id) => trickById(id).allowsAttemptDuringRewind);
 }
 
 /**
@@ -346,10 +364,13 @@ export function reachableTricks(state: GameState): Trick[] {
  *
  * ADR 0004 has no declared Gear requirement: a reachable Trick remains Attemptable even when the
  * preview says the Sleeper cannot sustain it. Action state is also part of the answer, so there is
- * nothing Attemptable off a live Sleeper or while another Attempt is running.
+ * nothing Attemptable off a live Sleeper (except through Mach 5) or while another Attempt runs.
  */
 export function attemptableTricks(state: GameState): Trick[] {
-  if (state.phase !== "Sleeping" || state.attempt !== null) return [];
+  const mayBegin =
+    state.phase === "Sleeping" ||
+    (state.phase === "Rewinding" && allowsAttemptDuringRewind(state));
+  if (!mayBegin || state.attempt !== null) return [];
   return reachableTricks(state);
 }
 
@@ -446,11 +467,13 @@ function attemptOutcome(state: GameState, trick: Trick, remaining: number): Atte
 }
 
 /**
- * Begin the named Trick on the Sleeper on the string. The one action Tricks have, and the only
- * thing the game ever asks the player to do with their hands (ADR 0004).
+ * Commit to the named Trick. Ordinarily it begins on the Sleeper on the string; Mach 5 also lets
+ * it be committed during Rewind, where it waits for the next Sleeper. This is the one action
+ * Tricks have, and the only thing the game ever asks the player to do with their hands (ADR 0004).
  *
- * Refused off a live Sleeper, and refused while another Attempt is running: an Attempt cannot be
- * cancelled, restarted or swapped, so there is no way to spend the commitment twice.
+ * Refused off a live Sleeper without that permission, and refused while another Attempt is
+ * committed: an Attempt cannot be cancelled, restarted or swapped, so there is no way to spend
+ * the commitment twice.
  *
  * **A fatal Attempt is not refused.** The outcome is known exactly before the player commits —
  * `previewAttempt` says so in Spin or in seconds — so attempting a Trick the Sleeper cannot
@@ -462,7 +485,44 @@ export function attemptTrick(state: GameState, trickId: TrickId): GameState {
   const trick = attemptableNow(state, trickId);
   if (trick === null) return state;
 
-  return { ...state, attempt: { trickId: trick.id, remaining: trick.durationSeconds } };
+  const attempt: Attempt =
+    state.phase === "Rewinding"
+      ? {
+          trickId: trick.id,
+          remaining: trick.durationSeconds,
+          promisedThrow: {
+            throwPowerLevel: state.throwPowerLevel,
+            bearingLevel: state.bearingLevel,
+          },
+        }
+      : { trickId: trick.id, remaining: trick.durationSeconds };
+  return { ...state, attempt };
+}
+
+/** The immutable outcome quoted when this Attempt was committed during Rewind, if it was. */
+function promisedAttemptOutcome(
+  state: GameState,
+  trick: Trick,
+  attempt: Attempt,
+): AttemptOutcome | null {
+  const promised = attempt.promisedThrow;
+  if (promised === undefined) return null;
+
+  const promisedState: GameState = {
+    ...state,
+    throwPowerLevel: promised.throwPowerLevel,
+    activeThrowGear: {
+      bearingLevel: promised.bearingLevel,
+      // Rewind Speed is not an Attempt input. This value is unused by the promised outcome and
+      // stays current only so the synthetic state remains a coherent GameState.
+      rewindSpeedLevel: state.activeThrowGear.rewindSpeedLevel,
+    },
+  };
+  return attemptOutcome(
+    { ...promisedState, spin: throwPower(promisedState) },
+    trick,
+    trick.durationSeconds,
+  );
 }
 
 /**
@@ -490,17 +550,23 @@ export type AttemptPreview = {
 
 /**
  * What beginning an Attempt on the named Trick right now would do, in full, or `null` when that
- * Trick is not Attemptable — including without a live Sleeper or while another Attempt runs.
+ * Trick is not Attemptable — including without a live Sleeper or Rewind permission, or while
+ * another Attempt runs.
  */
 export function previewAttempt(state: GameState, trickId: TrickId): AttemptPreview | null {
   const trick = attemptableNow(state, trickId);
   if (trick === null) return null;
 
-  return { trick, outcome: attemptOutcome(state, trick, trick.durationSeconds) };
+  const previewState =
+    state.phase === "Rewinding"
+      ? throwYoyo({ ...state, phase: "Ready", phaseElapsed: 0, attempt: null })
+      : state;
+  return { trick, outcome: attemptOutcome(previewState, trick, trick.durationSeconds) };
 }
 
 /**
- * The Trick being performed and how far through it is, from 0 as it begins to 1 as it resolves.
+ * The Trick committed and how far through its performance it is, from 0 as it begins to 1 as it
+ * resolves. A commitment waiting during Rewind reports 0 until the next Sleeper begins.
  *
  * ADR 0014 puts Attempt progress in the core and says the shell "renders that state and never
  * runs a second timer for it". This is that state: an animation reads it every frame and stays
@@ -513,10 +579,11 @@ export type ActiveAttempt = {
 
 export function activeAttempt(state: GameState): ActiveAttempt | null {
   const attempt = state.attempt;
-  if (attempt === null || state.phase !== "Sleeping") return null;
+  if (attempt === null) return null;
 
   const trick = trickById(attempt.trickId);
-  return { trick, progress: 1 - attempt.remaining / trick.durationSeconds };
+  const progress = state.phase === "Sleeping" ? 1 - attempt.remaining / trick.durationSeconds : 0;
+  return { trick, progress };
 }
 
 /**
@@ -596,14 +663,22 @@ export function advance(state: GameState, seconds: number): GameState {
     const attempt = current.attempt;
     const trick = attempt === null ? null : trickById(attempt.trickId);
     const decay = trick === null ? decayRate(current) : attemptDrain(current, trick);
-    const untilDead = current.spin / decay;
+    const promisedOutcome =
+      attempt === null || trick === null ? null : promisedAttemptOutcome(current, trick, attempt);
+    const promisedElapsed =
+      attempt === null || trick === null ? 0 : trick.durationSeconds - attempt.remaining;
+    const untilDead =
+      promisedOutcome !== null && !promisedOutcome.lands
+        ? Math.max(promisedOutcome.secondsUntilDeath - promisedElapsed, 0)
+        : current.spin / decay;
 
     // Two boundaries can end this segment and only the nearer one is reached. Whether the Trick
     // gets there first is `attemptOutcome`'s rule to state, not one to restate here.
-    const landsAt =
-      attempt !== null && trick !== null && attemptOutcome(current, trick, attempt.remaining).lands
-        ? attempt.remaining
-        : null;
+    const currentOutcome =
+      attempt === null || trick === null
+        ? null
+        : (promisedOutcome ?? attemptOutcome(current, trick, attempt.remaining));
+    const landsAt = currentOutcome?.lands ? attempt?.remaining ?? null : null;
     const untilBoundary = landsAt ?? untilDead;
     const reaches = remaining >= untilBoundary;
     const dt = reaches ? untilBoundary : remaining;
@@ -635,14 +710,19 @@ export function advance(state: GameState, seconds: number): GameState {
       // is a permanent fact from this instant: everything the rest of this Throw earns is already
       // changed by it, and any newly reachable rows may be Attempted straight away.
       const landedTricks = [...current.landedTricks, attempt.trickId];
-      const spinPacking = landingSpinPacking(current, trickById(attempt.trickId));
-      const outcome = attemptOutcome(current, trickById(attempt.trickId), attempt.remaining);
+      const landingTrick = trickById(attempt.trickId);
+      const spinPacking = landingSpinPacking(current, landingTrick);
+      const outcome =
+        currentOutcome ?? attemptOutcome(current, landingTrick, attempt.remaining);
       const styleBonus = outcome.lands ? outcome.styleBonus : 0;
       current = {
         ...banked,
         style: banked.style + styleBonus,
         lifetimeStyle: banked.lifetimeStyle + styleBonus,
-        spin: (current.spin - decay * dt) * spinPacking,
+        spin:
+          promisedOutcome?.lands === true
+            ? promisedOutcome.spinOnLanding
+            : (current.spin - decay * dt) * spinPacking,
         phaseElapsed: current.phaseElapsed + dt,
         attempt: null,
         landedTricks,
@@ -750,8 +830,15 @@ export function projectedYield(state: GameState): number {
 
   const trick = trickById(attempt.trickId);
   const drain = attemptDrain(state, trick);
-  const outcome = attemptOutcome(state, trick, attempt.remaining);
-  if (!outcome.lands) return (perSpin * state.spin ** 2) / (2 * drain);
+  const promisedOutcome = promisedAttemptOutcome(state, trick, attempt);
+  const outcome = promisedOutcome ?? attemptOutcome(state, trick, attempt.remaining);
+  if (!outcome.lands) {
+    if (promisedOutcome === null) return (perSpin * state.spin ** 2) / (2 * drain);
+
+    const elapsed = trick.durationSeconds - attempt.remaining;
+    const untilDeath = Math.max(outcome.secondsUntilDeath - elapsed, 0);
+    return perSpin * (state.spin * untilDeath - (drain * untilDeath ** 2) / 2);
+  }
 
   const untilItLands =
     perSpin * (state.spin * attempt.remaining - (drain * attempt.remaining ** 2) / 2);

@@ -90,7 +90,7 @@ A named manoeuvre performed during a Sleeper. Landing one for the first time mul
 _Avoid_: Skill, move, combo, ability, perk
 
 **Attempt**:
-Starting a Trick on a live Sleeper. Drains Spin for the Trick's duration; the outcome is fully determined at the moment of the Attempt, never random. Several may run in sequence within one Sleeper, one at a time.
+Committing to a Trick. Ordinarily begins on a live Sleeper; after Mach 5 has landed, it may be committed during Rewind and waits without progress or earnings for the next Sleeper. Once begun, it drains Spin for the Trick's duration and has a fully determined, never-random outcome.
 _Avoid_: Try, activate, cast, roll
 
 **Land**:

@@ -48,10 +48,18 @@ function isLandedTricks(value: unknown): value is TrickId[] {
   );
 }
 
+function isPromisedThrow(value: unknown): value is NonNullable<Attempt["promisedThrow"]> {
+  return (
+    isRecord(value) &&
+    isLevel(value.throwPowerLevel) &&
+    isLevel(value.bearingLevel)
+  );
+}
+
 /**
- * An Attempt in progress, or none. `remaining` is seconds of a Trick still to perform, so it is
- * positive and no longer than the Trick itself; anything else describes a Sleeper this build
- * cannot resolve.
+ * An Attempt committed, or none. `remaining` is positive and no longer than the Trick itself;
+ * a Rewind commitment may additionally promise raw Gear levels for its next Throw. Anything else
+ * describes a state this build cannot resolve.
  */
 function isAttempt(value: unknown): value is Attempt | null {
   if (value === null) return true;
@@ -62,7 +70,35 @@ function isAttempt(value: unknown): value is Attempt | null {
     trick !== undefined &&
     isFiniteNumber(value.remaining) &&
     value.remaining > 0 &&
-    value.remaining <= trick.durationSeconds
+    value.remaining <= trick.durationSeconds &&
+    (value.promisedThrow === undefined || isPromisedThrow(value.promisedThrow))
+  );
+}
+
+function isAttemptPhase(
+  phase: unknown,
+  landedTricks: TrickId[],
+  attempt: Attempt | null,
+  owned: { throwPowerLevel: number; bearingLevel: number },
+): boolean {
+  if (attempt === null) return true;
+  const promised = attempt.promisedThrow;
+  const promiseIsOwned =
+    promised === undefined ||
+    (promised.throwPowerLevel <= owned.throwPowerLevel &&
+      promised.bearingLevel <= owned.bearingLevel);
+  const hasPermission = landedTricks.some(
+    (id) => findTrick(id)?.allowsAttemptDuringRewind === true,
+  );
+  if (phase === "Sleeping") {
+    return promiseIsOwned && (promised === undefined || hasPermission);
+  }
+
+  return (
+    phase === "Rewinding" &&
+    promised !== undefined &&
+    promiseIsOwned &&
+    hasPermission
   );
 }
 
@@ -84,10 +120,13 @@ function isGameState(value: unknown): value is GameState {
     typeof value.hasAutoThrower === "boolean" &&
     isLandedTricks(value.landedTricks) &&
     isAttempt(value.attempt) &&
-    // An Attempt is activity inside a Sleeper (ADR 0014), which `GameState` says by calling the
-    // field meaningful only while `Sleeping`. A document claiming a Trick is being performed on a
-    // winding string is describing a game that cannot happen, whatever its fields say separately.
-    (value.attempt === null || value.phase === "Sleeping")
+    // Ordinarily an Attempt is activity inside a Sleeper (ADR 0014). Mach 5 grants the one
+    // exception sanctioned by ADR 0003: the commitment may wait through Rewind for the next
+    // Sleeper, but only when the landed facts actually grant that permission.
+    isAttemptPhase(value.phase, value.landedTricks, value.attempt, {
+      throwPowerLevel: value.throwPowerLevel,
+      bearingLevel: value.bearingLevel,
+    })
   );
 }
 

@@ -414,6 +414,55 @@ function drawColdFusionMount(
   context.restore();
 }
 
+/**
+ * Mach 5: the yoyo stays mounted while both hands orbit it in opposite directions. The circular
+ * hand path and fixed yoyo make it read apart from Cold Fusion's rolling yoyo and trading hands.
+ * Reduced motion holds the hands on opposite diagonals, leaving the split-bottom rig visible
+ * while the progress ring carries the timing.
+ */
+function mach5Pose(
+  centre: Point,
+  progress: number,
+  reducedMotion: boolean,
+): { yoyo: Point; leftHand: Point; rightHand: Point } {
+  const turn = reducedMotion ? Math.PI / 4 : progress * Math.PI * 4;
+  const orbit = { x: Math.cos(turn) * 94, y: Math.sin(turn) * 64 };
+
+  return {
+    yoyo: centre,
+    leftHand: { x: centre.x - orbit.x, y: centre.y - 76 - orbit.y },
+    rightHand: { x: centre.x + orbit.x, y: centre.y - 76 + orbit.y },
+  };
+}
+
+/** The crossed split-bottom rig held while the hands circle the mounted yoyo. */
+function drawMach5Mount(
+  context: CanvasRenderingContext2D,
+  leftHand: Point,
+  rightHand: Point,
+  yoyo: Point,
+): void {
+  const yoyoTop = yoyo.y - YOYO_RADIUS + 3;
+
+  context.save();
+  context.strokeStyle = "#c7bfae";
+  context.lineWidth = 1.4;
+  context.lineJoin = "round";
+
+  context.beginPath();
+  context.moveTo(leftHand.x, leftHand.y + 14);
+  context.lineTo(yoyo.x + 9, yoyoTop);
+  context.lineTo(rightHand.x, rightHand.y + 14);
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(rightHand.x, rightHand.y + 14);
+  context.lineTo(yoyo.x - 9, yoyoTop + 3);
+  context.lineTo(leftHand.x, leftHand.y + 14);
+  context.stroke();
+  context.restore();
+}
+
 function drawAttemptProgress(
   context: CanvasRenderingContext2D,
   position: Point,
@@ -460,33 +509,42 @@ function drawScene(
 
   const hand = { x: size.width / 2, y: 38 };
   const resting = yoyoPosition(state, size);
-  const attempt = activeAttempt(state);
+  // A Rewind commitment is waiting for a Sleeper, so the canvas keeps showing the physical
+  // Rewind until the Attempt actually begins to drain Spin.
+  const attempt = state.phase === "Sleeping" ? activeAttempt(state) : null;
   const rocking = attempt?.trick.id === "rock-the-baby";
   const flying = attempt?.trick.id === "man-on-the-flying-trapeze";
   const twisting = attempt?.trick.id === "brain-twister";
   const hopping = attempt?.trick.id === "eli-hops";
   const fusing = attempt?.trick.id === "cold-fusion";
+  const circling = attempt?.trick.id === "mach-5";
   const trapeze = flying && attempt !== null ? trapezeOffset(attempt.progress, reducedMotion) : null;
   const eliPose =
     hopping && attempt !== null ? eliHopsPose(resting, attempt.progress, reducedMotion) : null;
   const coldFusion =
     fusing && attempt !== null ? coldFusionPose(resting, attempt.progress, reducedMotion) : null;
+  const mach5 =
+    circling && attempt !== null ? mach5Pose(resting, attempt.progress, reducedMotion) : null;
   const yoyo =
-    coldFusion !== null
-      ? coldFusion.yoyo
-      : eliPose !== null
-        ? eliPose.yoyo
-        : attempt !== null && rocking
-          ? { x: resting.x + swingOffset(attempt.progress, reducedMotion), y: resting.y }
-          : trapeze !== null
-            ? { x: resting.x + trapeze.x, y: resting.y + trapeze.y }
-            : attempt !== null && twisting
-              ? { x: resting.x + twistShiver(attempt.progress, reducedMotion), y: resting.y }
-              : resting;
+    mach5 !== null
+      ? mach5.yoyo
+      : coldFusion !== null
+        ? coldFusion.yoyo
+        : eliPose !== null
+          ? eliPose.yoyo
+          : attempt !== null && rocking
+            ? { x: resting.x + swingOffset(attempt.progress, reducedMotion), y: resting.y }
+            : trapeze !== null
+              ? { x: resting.x + trapeze.x, y: resting.y + trapeze.y }
+              : attempt !== null && twisting
+                ? { x: resting.x + twistShiver(attempt.progress, reducedMotion), y: resting.y }
+                : resting;
   const spinRatio =
     state.phase === "Sleeping" ? clamp(state.spin / Math.max(throwPower(state), 1), 0, 1) : 0;
 
-  if (coldFusion !== null) {
+  if (mach5 !== null) {
+    drawMach5Mount(context, mach5.leftHand, mach5.rightHand, yoyo);
+  } else if (coldFusion !== null) {
     drawColdFusionMount(context, coldFusion.leftHand, coldFusion.rightHand, yoyo);
   } else if (eliPose !== null) drawEliHopsMount(context, eliPose.leftHand, eliPose.rightHand, yoyo);
   else if (attempt !== null && rocking) drawCradle(context, hand, yoyo, attempt.progress);
@@ -494,7 +552,10 @@ function drawScene(
   else if (attempt !== null && twisting) drawTwistedString(context, hand, yoyo, attempt.progress);
   else drawString(context, hand, yoyo);
 
-  if (coldFusion !== null) {
+  if (mach5 !== null) {
+    drawHand(context, mach5.leftHand);
+    drawHand(context, mach5.rightHand);
+  } else if (coldFusion !== null) {
     drawHand(context, coldFusion.leftHand);
     drawHand(context, coldFusion.rightHand);
   } else if (eliPose !== null) {
@@ -511,8 +572,14 @@ function drawScene(
  * What the canvas is showing, in words. The picture is the readout, so this is how it reads to
  * anyone not looking at it — and under reduced motion it is doing more of the work.
  */
-function sceneDescription(attempting: string | null): string {
+function sceneDescription(
+  attempting: string | null,
+  attemptPhase: GameState["phase"] | null,
+): string {
   if (attempting === null) return "A yoyo on its string";
+  if (attemptPhase === "Rewinding") {
+    return `${attempting}: an Attempt committed during Rewind for the next Sleeper`;
+  }
   return `${attempting}: an Attempt in progress on the Sleeper`;
 }
 
@@ -569,7 +636,7 @@ export function YoyoCanvas({ store }: YoyoCanvasProps) {
       ref={canvas}
       className="yoyo-canvas"
       role="img"
-      aria-label={sceneDescription(division.attempting)}
+      aria-label={sceneDescription(division.attempting, division.attemptPhase)}
     >
       A yoyo whose motion follows the current Throw Cycle.
     </canvas>

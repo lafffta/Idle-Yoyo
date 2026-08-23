@@ -117,6 +117,8 @@ export const SPINE_TRICKS_1A = [
     spinDrainMultiplier: 1.5,
     throwPowerSpinMultiplier: 1,
     landingStylePerSpinHeadroom: 0,
+    requiresAutoThrower: false,
+    allowsAttemptDuringRewind: false,
     effectDescription: null,
   },
   {
@@ -128,6 +130,8 @@ export const SPINE_TRICKS_1A = [
     spinDrainMultiplier: 2,
     throwPowerSpinMultiplier: 1,
     landingStylePerSpinHeadroom: 0,
+    requiresAutoThrower: false,
+    allowsAttemptDuringRewind: false,
     effectDescription: null,
   },
   {
@@ -139,6 +143,8 @@ export const SPINE_TRICKS_1A = [
     spinDrainMultiplier: 2.5,
     throwPowerSpinMultiplier: 1,
     landingStylePerSpinHeadroom: 0,
+    requiresAutoThrower: false,
+    allowsAttemptDuringRewind: false,
     effectDescription: null,
   },
 ] as const;
@@ -154,6 +160,8 @@ export const TRAPEZE_MOUNT_TRICKS_1A = [
     /** How much more Spin Throw Power becomes once Eli Hops has landed. */
     throwPowerSpinMultiplier: 1.5,
     landingStylePerSpinHeadroom: 0,
+    requiresAutoThrower: false,
+    allowsAttemptDuringRewind: false,
     effectDescription:
       "Throw Power packs more Spin into every Throw without making Sleepers longer.",
   },
@@ -170,13 +178,33 @@ export const DOUBLE_OR_NOTHING_MOUNT_TRICKS_1A = [
     throwPowerSpinMultiplier: 1,
     /** Style paid per unit of Spin left above this Attempt's cost when it lands. */
     landingStylePerSpinHeadroom: 1,
+    requiresAutoThrower: false,
+    allowsAttemptDuringRewind: false,
     effectDescription: "Landing pays Style equal to the Spin left above Cold Fusion's cost.",
+  },
+] as const;
+
+export const SPLIT_BOTTOM_MOUNT_TRICKS_1A = [
+  {
+    id: "mach-5",
+    name: "Mach 5",
+    kind: "structural",
+    durationSeconds: 6,
+    styleMultiplier: 1,
+    spinDrainMultiplier: 2.75,
+    throwPowerSpinMultiplier: 1,
+    landingStylePerSpinHeadroom: 0,
+    requiresAutoThrower: true,
+    allowsAttemptDuringRewind: true,
+    effectDescription:
+      "A landed Mach 5 lets you commit the next Attempt during Rewind; it begins on the next Sleeper.",
   },
 ] as const;
 
 export const MOUNT_TRICKS_1A = [
   ...TRAPEZE_MOUNT_TRICKS_1A,
   ...DOUBLE_OR_NOTHING_MOUNT_TRICKS_1A,
+  ...SPLIT_BOTTOM_MOUNT_TRICKS_1A,
 ] as const;
 
 export const TRICKS_1A = [...SPINE_TRICKS_1A, ...MOUNT_TRICKS_1A] as const;
@@ -189,5 +217,10 @@ export const TRICK_GROUPS_1A = [
     id: "double-or-nothing-mount",
     name: "Double-or-Nothing Mount",
     tricks: DOUBLE_OR_NOTHING_MOUNT_TRICKS_1A,
+  },
+  {
+    id: "split-bottom-mount",
+    name: "Split Bottom Mount",
+    tricks: SPLIT_BOTTOM_MOUNT_TRICKS_1A,
   },
 ] as const;
