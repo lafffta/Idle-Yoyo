@@ -48,4 +48,14 @@ describe("the printed Report", () => {
     expect(report).toContain("the Auto-Thrower was bought before the player was first away");
     expect(report).toContain("there is no unattended night in this run to price it against");
   });
+
+  it("prints reached and unchosen Mounts plus the longest Attemptable gap as figures", () => {
+    const timeline: Timeline = [session(1)];
+    const report = renderReport(timeline, simulate(timeline));
+
+    expect(report).toContain("The Mounts");
+    expect(report).toContain("Trapeze Mount");
+    expect(report).toContain("not reached");
+    expect(report).toContain("Longest with nothing Attemptable 0s");
+  });
 });

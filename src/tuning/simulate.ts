@@ -1,4 +1,4 @@
-import type { Attempt, GameState, TrickId } from "../core/simulation.js";
+import type { Attempt, GameState, Trick, TrickId } from "../core/simulation.js";
 import {
   advance,
   attemptableTricks,
@@ -16,9 +16,11 @@ import {
   rewindDuration,
   rewindSpeedCost,
   sustainedStyle,
+  throwPower,
   throwPowerCost,
   throwYoyo,
   trickById,
+  TRICK_GROUPS_1A,
   TRICKS_1A,
 } from "../core/simulation.js";
 import type { Period, Timeline } from "./timeline.js";
@@ -159,6 +161,20 @@ export type TrickRecord =
       readonly session: number;
     };
 
+export type MountId = Exclude<(typeof TRICK_GROUPS_1A)[number]["id"], "spine">;
+
+/** When the player first reached one authored Mount by landing one of its Tricks. */
+export type MountRecord =
+  | { readonly id: MountId; readonly name: string; readonly reached: false }
+  | {
+      readonly id: MountId;
+      readonly name: string;
+      readonly reached: true;
+      /** Session seconds elapsed, excluding Absences. */
+      readonly atSessionSeconds: number;
+      readonly session: number;
+    };
+
 /** A stretch of Absences and what they were worth, before the per-hour figure is worked out. */
 type AbsenceTotals = { absences: number; seconds: number; style: number };
 
@@ -201,6 +217,10 @@ export type Report = {
   readonly rewindReachedFloor: boolean;
   /** The 1A Division in authored display order, and what became of each Trick. */
   readonly tricks: readonly TrickRecord[];
+  /** Every authored Mount, including the ones this run never chose. */
+  readonly mounts: readonly MountRecord[];
+  /** Longest Session-only stretch during which no Trick was actually Attemptable. */
+  readonly longestSecondsWithNothingAttemptable: number;
   readonly autoThrower: AutoThrower;
   readonly absencesWithAutoThrower: AbsenceEarnings;
   readonly absencesWithoutAutoThrower: AbsenceEarnings;
@@ -353,6 +373,7 @@ export function simulate(timeline: Timeline): Report {
   let manualThrowsBefore = 0;
   let secondsWithNothingAffordable = 0;
   let secondsSpentSaving = 0;
+  const attemptability: AttemptabilityInterval[] = [];
   // Recorded once per Trick and never overwritten, since a landed Trick cannot be landed twice.
   const landed: Partial<Record<TrickId, { readonly atSeconds: number; readonly session: number }>> =
     {};
@@ -403,6 +424,7 @@ export function simulate(timeline: Timeline): Report {
 
     const played = playSession(state, period.seconds, elapsed, timeline.slice(index + 1));
     state = played.state;
+    attemptability.push(...played.attemptability);
 
     const session = sessions.length + 1;
     // Until the machine takes over, every Throw in the Session was made by hand; in the Session
@@ -456,6 +478,27 @@ export function simulate(timeline: Timeline): Report {
         ? { id: trick.id, name: trick.name, landed: false }
         : { id: trick.id, name: trick.name, landed: true, ...record };
     }),
+    mounts: TRICK_GROUPS_1A.flatMap((group): MountRecord[] => {
+      if (group.id === "spine") return [];
+      const reached = group.tricks
+        .flatMap((trick) => {
+          const record = landed[trick.id];
+          return record === undefined ? [] : [record];
+        })
+        .sort((left, right) => left.atSeconds - right.atSeconds)[0];
+      return reached === undefined
+        ? [{ id: group.id, name: group.name, reached: false }]
+        : [
+            {
+              id: group.id,
+              name: group.name,
+              reached: true,
+              atSessionSeconds: sessionSecondsAt(timeline, reached.atSeconds),
+              session: reached.session,
+            },
+          ];
+    }),
+    longestSecondsWithNothingAttemptable: longestStretchWithNothingAttemptable(attemptability),
     autoThrower:
       firstAutoThrower === null
         ? { bought: false, manualThrows: manualThrowsBefore, price: autoThrowerCost() }
@@ -480,6 +523,41 @@ function earningsOf(totals: AbsenceTotals): AbsenceEarnings {
     ...totals,
     stylePerHour: totals.seconds > 0 ? (totals.style * 3600) / totals.seconds : 0,
   };
+}
+
+type AttemptabilityInterval = {
+  readonly seconds: number;
+  readonly hasAttemptableTrick: boolean;
+};
+
+function longestStretchWithNothingAttemptable(
+  intervals: readonly AttemptabilityInterval[],
+): number {
+  let longest = 0;
+  let current = 0;
+
+  for (const interval of intervals) {
+    current = interval.hasAttemptableTrick ? 0 : current + interval.seconds;
+    longest = Math.max(longest, current);
+  }
+
+  return longest;
+}
+
+/** Session-only seconds elapsed by this wall-clock instant in the authored timeline. */
+function sessionSecondsAt(timeline: Timeline, atSeconds: number): number {
+  let elapsed = 0;
+  let sessionSeconds = 0;
+
+  for (const period of timeline) {
+    if (period.kind === "Session") {
+      sessionSeconds += Math.min(Math.max(atSeconds - elapsed, 0), period.seconds);
+    }
+    elapsed += period.seconds;
+    if (elapsed >= atSeconds) break;
+  }
+
+  return sessionSeconds;
 }
 
 /**
@@ -514,8 +592,10 @@ function playSession(
   } | null;
   /** Every Trick landed during this Session, in the order it happened. */
   readonly trickLandings: readonly { readonly id: TrickId; readonly atSeconds: number }[];
+  /** Boundary-to-boundary Session intervals, classified by actual Trick availability. */
+  readonly attemptability: readonly AttemptabilityInterval[];
 } {
-  let current = maybeAttempt(state);
+  let current = maybeAttempt(state, [{ kind: "Session", seconds }, ...ahead]);
   let remaining = seconds;
   let manualThrows = 0;
   let secondsWithNothingAffordable = 0;
@@ -523,6 +603,7 @@ function playSession(
   const purchases: Purchase[] = [];
   let boughtAutoThrower: { atSeconds: number; manualThrowsBefore: number } | null = null;
   const trickLandings: { readonly id: TrickId; readonly atSeconds: number }[] = [];
+  const attemptability: AttemptabilityInterval[] = [];
 
   // Whether the player is standing at the top of a Throw Cycle: the string wound, nothing in
   // flight, and the shop open. Without an Auto-Thrower that is the yoyo sitting `Ready` in the
@@ -593,7 +674,7 @@ function playSession(
       // The instant the string wound and a fresh Sleeper began — with an Auto-Thrower the Throw
       // above never ran, because `advance` already made it itself, but the decision is the same
       // decision at the same moment either way.
-      current = maybeAttempt(current);
+      current = maybeAttempt(current, [{ kind: "Session", seconds: remaining }, ...ahead]);
 
       atCycleTop = false;
     }
@@ -607,6 +688,10 @@ function playSession(
     const winding = current.phase === "Rewinding";
     const landedBefore = current.landedTricks.length;
 
+    attemptability.push({
+      seconds: step,
+      hasAttemptableTrick: attemptableTricks(current).length > 0,
+    });
     current = advance(current, step);
     remaining -= step;
     if (affordsNothing) secondsWithNothingAffordable += step;
@@ -621,7 +706,7 @@ function playSession(
     }
     // A no-op unless a Trick just landed with Spin — and so a chance to chain — left on the
     // string: `maybeAttempt` itself declines everywhere else there is nothing new to decide.
-    current = maybeAttempt(current);
+    current = maybeAttempt(current, [{ kind: "Session", seconds: remaining }, ...ahead]);
 
     // A wound string is the top of the next cycle, whether the yoyo is now waiting in the hand
     // or already back down on a fresh Sleeper.
@@ -636,6 +721,7 @@ function playSession(
     secondsSpentSaving,
     boughtAutoThrower,
     trickLandings,
+    attemptability,
   };
 }
 
@@ -775,12 +861,11 @@ type GearRow = ShopRow & { readonly item: GearStat; readonly level: (state: Game
  * the right one to "may I have it?", and now that the player ranks rows they are saving up for,
  * only the first question is being asked here.
  *
- * **Sustained Style is credited with the next Trick's landed effect the moment this purchase would
- * put it in reach**, through `sustainedStyleCreditingNextTrick` rather than `sustainedStyle`
- * itself. Both Throw Power and the Bearing improve Attempt safety (the plan asks for both to),
- * and without this a level that finally clears a Trick's threshold would be valued no differently
- * to one that leaves it exactly out of reach — the earning-rate rise `sustainedStyle` already
- * prices is real, but it is not the whole of what the purchase buys.
+ * **The row receives the change it makes to the best worthwhile Attempt**, as well as its direct
+ * Sustained Style rise. Both Throw Power and the Bearing improve Attempt safety, and the same
+ * horizon-based comparison the player uses on a live Sleeper sees every kind of Structural effect:
+ * lasting rate, immediate headroom and Rewind permission. Gear therefore competes with Mount
+ * content without either being assigned a fixed score.
  */
 function gearRow(
   item: GearStat,
@@ -796,29 +881,15 @@ function gearRow(
     onSale: () => true,
     worth: (state, horizon) => {
       const affordable = { ...state, style: price(state) };
+      const bought = buy(affordable);
+      const collectedSeconds = secondsGearIsCollectedOver(state, horizon);
       return (
-        (sustainedStyleCreditingNextTrick(buy(affordable)) -
-          sustainedStyleCreditingNextTrick(affordable)) *
-        secondsGearIsCollectedOver(state, horizon)
+        (sustainedStyle(bought) - sustainedStyle(affordable)) * collectedSeconds +
+        bestAttemptWorthOnFreshThrow(bought, horizon) -
+        bestAttemptWorthOnFreshThrow(affordable, horizon)
       );
     },
   };
-}
-
-/**
- * Sustained Style, credited with the policy's next Trick effect the instant a fresh Throw at the
- * Gear this state owns would land it.
- *
- * The engaged player Attempts that Trick the moment it is safe (`maybeAttempt` asks the same
- * `wouldLandFresh` question of the Sleeper they are actually holding), so a Gear purchase that
- * clears the threshold is worth crediting with the landing it is about to cause. The current
- * policy takes the first authored Attemptable choice, spine before Mount; #85 replaces that
- * placeholder with a player model that partitions Spin across simultaneous choices.
- */
-function sustainedStyleCreditingNextTrick(state: GameState): number {
-  const [trick] = attemptableTricks(freshThrow(state));
-  if (trick === undefined || !wouldLandFresh(state, trick.id)) return sustainedStyle(state);
-  return sustainedStyle({ ...state, landedTricks: [...state.landedTricks, trick.id] });
 }
 
 /**
@@ -1000,49 +1071,114 @@ function attemptBoundarySeconds(state: GameState, attempt: Attempt): number {
 }
 
 /**
- * What the engaged player does with a Sleeper that is free to Attempt something: take the first
- * authored choice the instant it is safe, sacrifice the Sleeper on a fatal Attempt anyway when a
- * fresh Throw would land it and this one will not, or leave it alone. This spine-before-Mount
- * choice is intentionally temporary; #85 replaces it with explicit Spin partitioning.
+ * What the engaged player does with a Sleeper that is free to Attempt something: compare every
+ * reachable Trick by what landing it earns over the play still ahead, take the best positive
+ * choice, sacrifice the Sleeper on a fatal Attempt when a fresh Throw would land the best choice,
+ * or leave every offered Mount alone when none repays the Spin it would consume.
  *
  * Called wherever a live Sleeper has nothing already committed — the instant a Throw begins one,
  * and again the instant an earlier Trick in the same Sleeper lands and frees it for another — so
  * a chain is the same decision asked twice rather than a second policy layered over the first.
  *
- * A safe Attempt is never declined: it costs nothing but the Sleeper's tail, which keeps earning
- * at the Trick's own (higher) drain throughout, and it buys a multiplier that is permanent from
- * the instant it lands. There is no version of "wait" that beats taking it.
+ * The comparison stays in Style rather than assigning Mounts an authored score. The current
+ * Sleeper contributes its exact projected-yield difference; a lasting effect contributes the
+ * change in Sustained Style over the Session time ahead, and over Absences only when an
+ * Auto-Thrower will actually collect it. Ties keep authored order, making Reports deterministic.
  */
-function maybeAttempt(state: GameState): GameState {
-  if (state.phase !== "Sleeping" || state.attempt !== null) return state;
+function maybeAttempt(state: GameState, ahead: Ahead): GameState {
+  if ((state.phase !== "Sleeping" && state.phase !== "Rewinding") || state.attempt !== null) {
+    return state;
+  }
 
-  const [trick] = attemptableTricks(state);
-  if (trick === undefined) return state;
+  const choice = bestAttempt(state, ahead);
+  return choice === null ? state : attemptTrick(state, choice.id);
+}
 
-  const preview = previewAttempt(state, trick.id);
-  if (preview === null) return state;
-  if (preview.outcome.lands) return attemptTrick(state, trick.id);
+/** The best worthwhile choice on this Sleeper, including the strategic-fatal escape hatch. */
+function bestAttempt(state: GameState, ahead: Ahead): Trick | null {
+  return bestAttemptForHorizon(state, horizonOf(ahead))?.trick ?? null;
+}
 
-  return wouldLandFresh(state, trick.id) ? attemptTrick(state, trick.id) : state;
+function bestAttemptForHorizon(
+  state: GameState,
+  horizon: Horizon,
+): { readonly trick: Trick; readonly worth: number } | null {
+  let best: { readonly trick: Trick; readonly worth: number } | null = null;
+  // A Rewind preview quotes the next fresh Sleeper. Price that promised Throw rather than the
+  // zero-Spin dead time it is waiting through; the actual commitment still goes onto `state`.
+  const pricedState = state.phase === "Rewinding" ? freshThrow(state) : state;
+
+  for (const trick of attemptableTricks(state)) {
+    const preview = previewAttempt(state, trick.id);
+    if (preview === null) continue;
+
+    if (preview.outcome.lands) {
+      const worth = attemptWorth(pricedState, trick, horizon);
+      if (worth > 0 && (best === null || worth > best.worth)) best = { trick, worth };
+      continue;
+    }
+
+    const fresh = freshThrow(pricedState);
+    const freshPreview = previewAttempt(fresh, trick.id);
+    if (freshPreview === null || !freshPreview.outcome.lands) continue;
+    const sacrifice = projectedYield(attemptTrick(state, trick.id)) - projectedYield(state);
+    const worth = attemptWorth(fresh, trick, horizon) + sacrifice;
+    if (worth > 0 && (best === null || worth > best.worth)) {
+      best = { trick, worth };
+    }
+  }
+
+  return best;
+}
+
+function bestAttemptWorthOnFreshThrow(state: GameState, horizon: Horizon): number {
+  return bestAttemptForHorizon(freshThrow(state), horizon)?.worth ?? 0;
+}
+
+/** Style gained or lost by committing this safe Attempt over the play that remains. */
+function attemptWorth(state: GameState, trick: Trick, horizon: Horizon): number {
+  const committed = attemptTrick(state, trick.id);
+  const afterLanding = advance(committed, trick.durationSeconds);
+  if (!afterLanding.landedTricks.includes(trick.id)) return -Infinity;
+
+  const currentSleeper = projectedYield(committed) - projectedYield(state);
+  const collectedSeconds = secondsGearIsCollectedOver(state, horizon);
+  const lastingRate = sustainedStyle(afterLanding) - sustainedStyle(state);
+  return (
+    currentSleeper +
+    lastingRate * Math.max(collectedSeconds - trick.durationSeconds, 0) +
+    rewindCommitmentWorth(afterLanding, trick, horizon)
+  );
 }
 
 /**
- * Whether a Throw made right now, at the Gear currently owned, would land the next Trick.
+ * The Style-equivalent worth of moving later commitments into Rewind.
  *
- * This is what a fatal Attempt is weighed against: Gear bought mid-Sleeper cannot rescue the
- * Attempt already committed (ADR 0013), because the Sleeper is still decaying at the rate its own
- * Throw captured — but it can make the very next Throw safe, and sacrificing the Sleeper in hand
- * is only worth anything if reaching that Throw sooner actually lands somewhere. A Sleeper that
- * has already spent some of its Spin — chaining onto a second Trick, say — can fail here purely
- * for want of the headroom a fresh one starts with, which a fresh Throw does not lack.
+ * Mach 5 changes no passive rate, so a perfect boundary-stepping simulator otherwise calls its
+ * permanent convenience worthless. The player instead prices the extra decision window across
+ * every whole Throw Cycle still left in engaged play, using one current fresh Sleeper's projected
+ * Style per Rewind made available. Both the number of windows and their Style-equivalent scale
+ * come from the current run; with no future Rewind to use, the effect is worth zero and the Mount
+ * is honestly declined.
  */
-function freshThrow(state: GameState): GameState {
-  return throwYoyo({ ...state, phase: "Ready" });
+function rewindCommitmentWorth(
+  afterLanding: GameState,
+  trick: Trick,
+  horizon: Horizon,
+): number {
+  if (!trick.allowsAttemptDuringRewind) return 0;
+
+  const fresh = freshThrow(afterLanding);
+  const throwCycleSeconds = throwPower(afterLanding) / decayRate(fresh) + rewindDuration(fresh);
+  const futureRewinds = Math.floor(
+    Math.max(horizon.sessionSeconds - trick.durationSeconds, 0) / throwCycleSeconds,
+  );
+  return futureRewinds * projectedYield(fresh);
 }
 
-function wouldLandFresh(state: GameState, trickId: TrickId): boolean {
-  const preview = previewAttempt(freshThrow(state), trickId);
-  return preview !== null && preview.outcome.lands;
+/** A hypothetical fresh Throw at the Gear currently owned, built only through the core action. */
+function freshThrow(state: GameState): GameState {
+  return throwYoyo({ ...state, phase: "Ready" });
 }
 
 function gearOf(state: GameState): GearLevels {
