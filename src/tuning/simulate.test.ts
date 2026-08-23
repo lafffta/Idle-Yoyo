@@ -201,20 +201,22 @@ describe("a player at the shop", () => {
     ]);
   });
 
-  it("Throws harder from the moment it buys Throw Power, and lands Man on the Flying Trapeze on it", () => {
+  it("Throws harder after buying Throw Power but declines a spine Attempt the short run cannot repay", () => {
     // A level of Throw Power puts `S₀` at 120 — and 120 is exactly enough Spin for Man on the
     // Flying Trapeze's ×2 drain to land rather than kill: `120 − 20 × 2 × 2.5 = 20` left over,
-    // so the engaged player Attempts it the instant the purchase lets them, the same way they
-    // did Rock the Baby on the opening Throw. That Attempt, the ordinary decay of the 20 Spin it
-    // leaves behind, and the untouched cycles after it all land inside this 40s Session.
+    // but only 8.75 seconds of this short run remain when the purchase is made. The lasting ×1.5
+    // cannot repay the Style the Attempt would consume before the Session closes, so the merit
+    // policy leaves it for a longer run and takes the ordinary 4.5-Style Sleeper instead.
     const report = simulate([session(40)]);
 
     expect(report.sessions[0]?.gearAtClose).toEqual({ throwPower: 1, bearing: 0, rewindSpeed: 0 });
-    expect(report.sessions[0]?.manualThrows).toBe(6);
-    expect(report.sessions[0]?.styleEarned).toBeCloseTo(17.97109375, 10);
-    // Both Tricks the opening Gear can reach are landed by the close of this Session, so
-    // Sustained Style now carries their compounded ×1.25 × ×1.5 = ×1.875.
-    expect(report.sessions[0]?.sustainedStyleAtClose).toBeCloseTo(0.75, 10);
+    expect(report.sessions[0]?.manualThrows).toBe(5);
+    expect(report.sessions[0]?.styleEarned).toBeCloseTo(15.9828125, 10);
+    expect(report.tricks.find((trick) => trick.id === "man-on-the-flying-trapeze")?.landed).toBe(
+      false,
+    );
+    // Only Rock the Baby's ×1.25 is active at close.
+    expect(report.sessions[0]?.sustainedStyleAtClose).toBeCloseTo(0.5, 10);
   });
 
   it("has stopped playing by the instant a Session closes, so a boundary there is not shopped at", () => {
@@ -324,15 +326,16 @@ describe("a player saving up", () => {
 
   it("goes on buying when what it wants is out of reach of the whole run", () => {
     // The same day away, and the same Auto-Thrower worth a fortune to a player who could get one
-    // — but only 240 seconds of play in the entire timeline. Saving for it would swallow the run
+    // — but only 180 seconds of play in the entire timeline. Saving for it would swallow the run
     // and leave the player holding the price with nothing ahead for the machine to earn in.
     //
     // A player who could only rank rows they could afford would be safe from this, and a player
     // who ranked everything and simply waited for the best would buy nothing for 260 seconds and
     // finish the run on the yoyo they started with. Neither is wanted: the row is valued over
     // what would be left after the saving, which here is nothing at all, so it declines itself
-    // and the player spends the run improving the yoyo.
-    const report = simulate([session(180), absence(86_400), session(60)]);
+    // and the player spends the run improving the yoyo. The shorter opening reflects the Mount
+    // policy's higher early earnings; at the old 240 seconds the machine is now honestly reachable.
+    const report = simulate([session(120), absence(86_400), session(60)]);
 
     expect(report.autoThrower.bought).toBe(false);
     expect(report.sessions[0]?.purchases.length).toBeGreaterThan(0);
@@ -361,6 +364,15 @@ describe("a player saving up", () => {
 
     expect(report.secondsWithNothingAffordable).toBeCloseTo(24, 10);
     expect(report.secondsSpentSaving).toBe(0);
+  });
+});
+
+describe("a player choosing between Mounts", () => {
+  it("leaves every Mount unchosen when the remaining play cannot repay its Spin", () => {
+    const report = simulate([session(100)]);
+
+    expect(report.tricks.some((trick) => trick.landed)).toBe(true);
+    expect(report.mounts.every((mount) => !mount.reached)).toBe(true);
   });
 });
 
@@ -460,6 +472,45 @@ describe("the Auto-Thrower", () => {
 });
 
 describe("the Report's headline facts", () => {
+  it("keeps every Mount visible when the player reached none of them", () => {
+    const report = simulate([session(1)]);
+
+    expect(report.mounts).toEqual([
+      { id: "trapeze-mount", name: "Trapeze Mount", reached: false },
+      { id: "double-or-nothing-mount", name: "Double-or-Nothing Mount", reached: false },
+      { id: "split-bottom-mount", name: "Split Bottom Mount", reached: false },
+    ]);
+  });
+
+  it("places every reached Mount in a Session and in Session seconds", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    expect(report.mounts.every((mount) => mount.reached)).toBe(true);
+    for (const mount of report.mounts) {
+      if (!mount.reached) throw new Error(`${mount.name} was not reached`);
+      expect(mount.session).toBeGreaterThan(0);
+      expect(mount.atSessionSeconds).toBeGreaterThan(0);
+    }
+  });
+
+  it("states the longest Session stretch with nothing Attemptable", () => {
+    const report = simulate([session(1)]);
+
+    // Rock the Baby remains mechanically available throughout this short Sleeper even though
+    // the merit policy declines it because the Session ends before the Attempt could resolve.
+    expect(report.longestSecondsWithNothingAttemptable).toBe(0);
+  });
+
+  it("does not call a declined but available Trick nothing Attemptable", () => {
+    const report = simulate([session(100)]);
+
+    expect(report.tricks.find((trick) => trick.id === "man-on-the-flying-trapeze")?.landed).toBe(
+      true,
+    );
+    expect(report.tricks.find((trick) => trick.id === "brain-twister")?.landed).toBe(false);
+    expect(report.longestSecondsWithNothingAttemptable).toBeLessThan(8);
+  });
+
   it("says plainly that the player declined the Auto-Thrower when they did", () => {
     const report = simulate([session(3_600)]);
 

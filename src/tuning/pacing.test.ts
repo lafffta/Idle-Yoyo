@@ -247,24 +247,25 @@ describe("the 1A Division", () => {
 
   /**
    * The first Mount is visible in the same Report as the spine rather than silently changing a
-   * final multiplier. Under the temporary spine-first player policy it follows Brain Twister;
-   * #85 replaces that ordering assumption when the harness learns to partition Spin.
+   * final multiplier. Eli Hops lands before the authored-first Brain Twister because its lasting
+   * Throw Power conversion is the stronger choice over the run ahead — direct evidence that the
+   * player is weighing simultaneous options rather than reading the array from left to right.
    */
-  it("reports Eli Hops as Mount content within the first Session", () => {
+  it("chooses Eli Hops on its merits within the first Session", () => {
     const report = simulate(CANONICAL_TIMELINE);
 
     const brainTwister = landingOf(report, "brain-twister");
     const eliHops = landingOf(report, "eli-hops");
 
-    expect(eliHops.atSeconds).toBeGreaterThan(brainTwister.atSeconds);
+    expect(eliHops.atSeconds).toBeLessThan(brainTwister.atSeconds);
     expect(engagedSecondsBy(CANONICAL_TIMELINE, eliHops.atSeconds)).toBeLessThanOrEqual(
       FIRST_SESSION_SECONDS,
     );
   });
 
   /**
-   * The second Mount is measured beside the first. The temporary authored-order policy lands it
-   * after Eli Hops; #85 replaces that ordering assumption with a real choice between Mounts.
+   * The second Mount is measured beside the first. Its immediate headroom payout follows the
+   * lasting conversion the policy valued more highly over the canonical run.
    */
   it("reports Cold Fusion as the second opening Mount within the first Session", () => {
     const report = simulate(CANONICAL_TIMELINE);
@@ -280,8 +281,8 @@ describe("the 1A Division", () => {
 
   /**
    * Split Bottom Mount is post-automation content by construction, not merely by display copy.
-   * The temporary authored-order policy still gets this first slice in front of the player while
-   * the opening Session is live; #85 will remeasure it under explicit Spin partitioning.
+   * The merit policy still gets this first slice in front of the player while the opening Session
+   * is live.
    */
   it("reports Mach 5 after the Auto-Thrower and within the first Session", () => {
     const report = simulate(CANONICAL_TIMELINE);

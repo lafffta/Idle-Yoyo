@@ -16,6 +16,16 @@ function describeTricks(report: Report): string[] {
   );
 }
 
+/** Every authored Mount, including an explicit record when this player declined it. */
+function describeMounts(report: Report): string[] {
+  return report.mounts.map((mount) =>
+    mount.reached
+      ? `${mount.name.padEnd(28)} reached after ${formatDuration(mount.atSessionSeconds)} of Session time, ` +
+        `during Session ${mount.session}`
+      : `${mount.name.padEnd(28)} not reached`,
+  );
+}
+
 /**
  * Prints the Report for the canonical timeline. Run it with `npm run tune`.
  *
@@ -264,6 +274,11 @@ export function renderReport(timeline: Timeline, report: Report): string {
     "of the run once they had saved for it — so a wait costs a purchase the earnings it gives",
     "up, and anything out of reach of the whole run is worth nothing and declines itself.",
     "",
+    "On a free Sleeper they compare every Attemptable Trick by the exact Style its Spin costs",
+    "and what its effect is worth over the play remaining. A Mount may be declined, and the",
+    "Gear that changes those choices receives their value. The Auto-Thrower remains worth only",
+    "the Absences ahead, and all of them still compete in the same shop ranking.",
+    "",
     "It is a good rule and not the best one: buying now also shortens the wait for everything",
     "after it, which no rule ranking one purchase at a time can weigh. Read a time below as",
     "when this player got there, not as the earliest anyone could.",
@@ -285,6 +300,9 @@ export function renderReport(timeline: Timeline, report: Report): string {
     "",
     "The 1A Division",
     ...describeTricks(report),
+    "",
+    "The Mounts",
+    ...describeMounts(report),
     "",
     "The Auto-Thrower",
     ...describeAutoThrower(report),
@@ -310,6 +328,7 @@ export function renderReport(timeline: Timeline, report: Report): string {
     // what the game pays and the prices are wrong; this is the shop working.
     `Spent saving             ${formatDuration(report.secondsSpentSaving)} of ` +
       `${formatDuration(played)} played`,
+    `Longest with nothing Attemptable ${formatDuration(report.longestSecondsWithNothingAttemptable)}`,
   ];
 
   return lines.join("\n");
