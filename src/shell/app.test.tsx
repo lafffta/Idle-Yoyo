@@ -238,7 +238,9 @@ describe("the 1A Division", () => {
     expect(ladder).toContain("Trapeze Mount");
     expect(ladder).toContain("Double-or-Nothing Mount");
     expect(ladder).toContain("Split Bottom Mount");
+    expect(ladder).toContain("Wrist Mount");
     expect(ladder).toContain("Mach 5");
+    expect(ladder).toContain("Spirit Bomb");
     expect(ladder).toContain(
       "Attempts drain Spin. Landing a Trick changes every Throw after it. Run out of Spin and the Yoyo dies.",
     );
@@ -251,6 +253,7 @@ describe("the 1A Division", () => {
     expect(ladder.indexOf("Brain Twister")).toBeLessThan(ladder.indexOf("Eli Hops"));
     expect(ladder.indexOf("Eli Hops")).toBeLessThan(ladder.indexOf("Cold Fusion"));
     expect(ladder.indexOf("Cold Fusion")).toBeLessThan(ladder.indexOf("Mach 5"));
+    expect(ladder.indexOf("Mach 5")).toBeLessThan(ladder.indexOf("Spirit Bomb"));
 
     // The later rows say what opens them rather than offering an action that would be refused.
     expect(ladder).toContain("Land Rock the Baby first");
@@ -260,8 +263,11 @@ describe("the 1A Division", () => {
       "Throw Power packs more Spin into every Throw without making Sleepers longer.",
     );
     expect(ladder).toContain("Landing pays Style equal to the Spin left above Cold Fusion");
+    expect(ladder).toContain(
+      "Throw Power packs far more Spin into every Throw without making Sleepers longer.",
+    );
     expect(ladder).toContain("Own the Auto-Thrower first");
-    expect(ladder.match(/<button/g)).toHaveLength(3);
+    expect(ladder.match(/<button/g)).toHaveLength(4);
     expect(ladder).toMatch(
       /<button(?![^>]*disabled)[^>]*>Attempt Rock the Baby<\/button>/,
     );
@@ -278,7 +284,7 @@ describe("the 1A Division", () => {
     const ladder = trickDivisionMarkup(store);
 
     expect(ladder).not.toContain("Own the Auto-Thrower first");
-    expect(ladder.match(/<button/g)).toHaveLength(4);
+    expect(ladder.match(/<button/g)).toHaveLength(5);
     expect(ladder).toMatch(/<button(?![^>]*disabled)[^>]*>Attempt anyway<\/button>/);
   });
 
@@ -500,6 +506,13 @@ describe("the 1A Division", () => {
     expect(renderToStaticMarkup(<App store={splitBottomStore} />)).toContain(
       'aria-label="Mach 5: an Attempt in progress on the Sleeper"',
     );
+
+    const wristMountStore = createGameStore({ now: () => now });
+    wristMountStore.attemptTrick("spirit-bomb");
+
+    expect(renderToStaticMarkup(<App store={wristMountStore} />)).toContain(
+      'aria-label="Spirit Bomb: an Attempt in progress on the Sleeper"',
+    );
   });
 
   /**
@@ -523,7 +536,7 @@ describe("the 1A Division", () => {
     const afterRockTheBaby = trickDivisionMarkup(store);
     expect(afterRockTheBaby).toContain("Land Man on the Flying Trapeze first");
     expect(afterRockTheBaby).not.toContain("Land Rock the Baby first");
-    expect(afterRockTheBaby.match(/<button/g)).toHaveLength(3);
+    expect(afterRockTheBaby.match(/<button/g)).toHaveLength(4);
 
     store.attemptTrick("man-on-the-flying-trapeze");
 
@@ -570,7 +583,7 @@ describe("the 1A Division", () => {
 
     // Between the second landing and the third: Brain Twister and the independent Mount are open.
     const beforeBrainTwister = trickDivisionMarkup(store);
-    expect(beforeBrainTwister.match(/<button/g)).toHaveLength(3);
+    expect(beforeBrainTwister.match(/<button/g)).toHaveLength(4);
     expect(beforeBrainTwister).toMatch(
       /<button(?![^>]*disabled)[^>]*>Attempt Brain Twister<\/button>/,
     );

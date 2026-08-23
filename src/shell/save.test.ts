@@ -197,6 +197,8 @@ describe("a saved Trick", () => {
     expect(loaded.state.version).toBe(3);
     expect(loaded.state.landedTricks).not.toContain("eli-hops");
     expect(loaded.state.landedTricks).not.toContain("cold-fusion");
+    expect(loaded.state.landedTricks).not.toContain("mach-5");
+    expect(loaded.state.landedTricks).not.toContain("spirit-bomb");
     expect(deserializeSave(serializeSave(loaded))).toEqual(loaded);
   });
 
@@ -221,10 +223,10 @@ describe("a saved Trick", () => {
     });
   });
 
-  it("round-trips both landed Mounts without moving the save version", () => {
+  it("round-trips landed Mount content without moving the save version", () => {
     const state: GameState = {
       ...throwYoyo(initialState()),
-      landedTricks: ["eli-hops", "cold-fusion"],
+      landedTricks: ["eli-hops", "cold-fusion", "mach-5", "spirit-bomb"],
     };
     const saved = { savedAt: 12_345, state };
 
@@ -232,7 +234,12 @@ describe("a saved Trick", () => {
 
     expect(loaded).toEqual(saved);
     expect(loaded?.state.version).toBe(3);
-    expect(loaded?.state.landedTricks).toEqual(["eli-hops", "cold-fusion"]);
+    expect(loaded?.state.landedTricks).toEqual([
+      "eli-hops",
+      "cold-fusion",
+      "mach-5",
+      "spirit-bomb",
+    ]);
   });
 
   it("round-trips an Attempt committed during Rewind without moving the save version", () => {

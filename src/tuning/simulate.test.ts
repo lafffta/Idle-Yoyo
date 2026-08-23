@@ -479,18 +479,34 @@ describe("the Report's headline facts", () => {
       { id: "trapeze-mount", name: "Trapeze Mount", reached: false },
       { id: "double-or-nothing-mount", name: "Double-or-Nothing Mount", reached: false },
       { id: "split-bottom-mount", name: "Split Bottom Mount", reached: false },
+      { id: "wrist-mount", name: "Wrist Mount", reached: false },
     ]);
   });
 
   it("places every reached Mount in a Session and in Session seconds", () => {
     const report = simulate(CANONICAL_TIMELINE);
 
-    expect(report.mounts.every((mount) => mount.reached)).toBe(true);
-    for (const mount of report.mounts) {
-      if (!mount.reached) throw new Error(`${mount.name} was not reached`);
+    const reached = report.mounts.filter((mount) => mount.reached);
+    expect(reached.length).toBeGreaterThan(0);
+    for (const mount of reached) {
       expect(mount.session).toBeGreaterThan(0);
       expect(mount.atSessionSeconds).toBeGreaterThan(0);
     }
+  });
+
+  it("keeps a later-run Mount visible when the canonical player defers it", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    expect(report.mounts.find((mount) => mount.id === "wrist-mount")).toEqual({
+      id: "wrist-mount",
+      name: "Wrist Mount",
+      reached: false,
+    });
+    expect(report.tricks.find((trick) => trick.id === "spirit-bomb")).toEqual({
+      id: "spirit-bomb",
+      name: "Spirit Bomb",
+      landed: false,
+    });
   });
 
   it("states the longest Session stretch with nothing Attemptable", () => {

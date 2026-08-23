@@ -201,10 +201,42 @@ export const SPLIT_BOTTOM_MOUNT_TRICKS_1A = [
   },
 ] as const;
 
+/**
+ * Later-run 1A content. Spirit Bomb is deliberately beyond the first run at the provisional
+ * curve: #86's measured availability guard needs a real deferred choice, not a wider threshold
+ * around a ladder the player has already emptied. Its stronger conversion keeps Wrist Mount
+ * from being strictly worse than the easier Trapeze Mount; its much harder Attempt is the soft
+ * fork ADR 0017 calls for, enforced by the Gear curve rather than by a lock or a second resource.
+ *
+ * #86 swept the drain against the canonical player: 331 lands 58m 12s into Session time and
+ * leaves a 36m 58s empty tail, while 332 defers the Mount and leaves only 18s with nothing
+ * Attemptable. 350 keeps a small margin above that measured boundary. The availability guard in
+ * `pacing.test.ts` catches the condition under which this note expires: a rebalance that lets the
+ * player empty the Division again.
+ */
+export const WRIST_MOUNT_TRICKS_1A = [
+  {
+    id: "spirit-bomb",
+    name: "Spirit Bomb",
+    kind: "structural",
+    durationSeconds: 8,
+    styleMultiplier: 1,
+    spinDrainMultiplier: 350,
+    /** How much more Spin Throw Power becomes once Spirit Bomb has landed. */
+    throwPowerSpinMultiplier: 2,
+    landingStylePerSpinHeadroom: 0,
+    requiresAutoThrower: false,
+    allowsAttemptDuringRewind: false,
+    effectDescription:
+      "Throw Power packs far more Spin into every Throw without making Sleepers longer.",
+  },
+] as const;
+
 export const MOUNT_TRICKS_1A = [
   ...TRAPEZE_MOUNT_TRICKS_1A,
   ...DOUBLE_OR_NOTHING_MOUNT_TRICKS_1A,
   ...SPLIT_BOTTOM_MOUNT_TRICKS_1A,
+  ...WRIST_MOUNT_TRICKS_1A,
 ] as const;
 
 export const TRICKS_1A = [...SPINE_TRICKS_1A, ...MOUNT_TRICKS_1A] as const;
@@ -223,4 +255,5 @@ export const TRICK_GROUPS_1A = [
     name: "Split Bottom Mount",
     tricks: SPLIT_BOTTOM_MOUNT_TRICKS_1A,
   },
+  { id: "wrist-mount", name: "Wrist Mount", tricks: WRIST_MOUNT_TRICKS_1A },
 ] as const;
