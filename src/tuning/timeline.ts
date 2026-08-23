@@ -38,6 +38,18 @@ const hours = (count: number): number => count * 60 * 60;
 export const FIRST_SESSION_SECONDS = minutes(20);
 
 /**
+ * The longest a Session may pass with no Trick Attemptable.
+ *
+ * **PROVISIONAL — measured from the failed ladder, not authored as a target cadence.** Before
+ * Mounts, the smaller of the two holes reported by the harness ran from Man on the Flying
+ * Trapeze at 34 seconds to the Auto-Thrower at 6m 11s: 5m 37s with no decision available. Five
+ * minutes is the round threshold immediately below that measured failure, so the guard would
+ * have caught both it and the 1h 27m hole after the ladder emptied. #86 owns revisiting this
+ * threshold if the canonical timeline or the availability instrument changes.
+ */
+export const MAX_SECONDS_WITH_NOTHING_ATTEMPTABLE = minutes(5);
+
+/**
  * The canonical timeline: six Sessions and five Absences, three overnights among them, and
  * about an hour and a half of actual play.
  *

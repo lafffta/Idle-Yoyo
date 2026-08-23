@@ -1187,11 +1187,12 @@ describe("coming back from eight hours away without an Auto-Thrower", () => {
  * Throw, from a yoyo with nothing bought.
  */
 describe("Attempting a Trick", () => {
-  it("offers the opening spine Trick and both Mount Tricks together on the opening Sleeper", () => {
+  it("offers the opening spine Trick and every reachable Mount Trick together", () => {
     expect(attemptableTricks(freshSleeper()).map((trick) => trick.id)).toEqual([
       "rock-the-baby",
       "eli-hops",
       "cold-fusion",
+      "spirit-bomb",
     ]);
   });
 
@@ -1200,7 +1201,13 @@ describe("Attempting a Trick", () => {
     const automatic = attemptableTricks(automaticSleeper()).map((trick) => trick.id);
 
     expect(manual).not.toContain("mach-5");
-    expect(automatic).toEqual(["rock-the-baby", "eli-hops", "cold-fusion", "mach-5"]);
+    expect(automatic).toEqual([
+      "rock-the-baby",
+      "eli-hops",
+      "cold-fusion",
+      "mach-5",
+      "spirit-bomb",
+    ]);
   });
 
   it("quotes Cold Fusion's own exact outcome beside the other opening choices", () => {
@@ -1321,6 +1328,7 @@ describe("Attempting a Trick", () => {
       "Eli Hops",
       "Cold Fusion",
       "Mach 5",
+      "Spirit Bomb",
     ]);
   });
 });
@@ -1365,6 +1373,26 @@ describe("landing Eli Hops from the Trapeze Mount", () => {
 
     expect(previewNamedAttempt(sleeper, "eli-hops")).toBe(null);
     expect(activeAttempt(attemptNamedTrick(sleeper, "eli-hops"))).toBe(null);
+  });
+});
+
+describe("landing Spirit Bomb from Wrist Mount", () => {
+  it("rewards the much harder Attempt by packing far more Spin into later Throws", () => {
+    const geared = afterShopping([buyBearing, 100]);
+    const sleeper = throwYoyo(geared);
+
+    const preview = previewNamedAttempt(sleeper, "spirit-bomb");
+    const landed = advance(attemptNamedTrick(sleeper, "spirit-bomb"), 8);
+    const held: GameState = { ...geared, landedTricks: ["spirit-bomb"] };
+    const nextThrow = throwYoyo(held);
+
+    expect(preview?.outcome.lands).toBe(true);
+    expect(landed.landedTricks).toContain("spirit-bomb");
+    expect(nextThrow.spin).toBe(200);
+    expect(sleeperLength(held)).toBeCloseTo(sleeperLength(geared), 10);
+    expect(rewindDuration(held)).toBe(rewindDuration(geared));
+    expect(uptime(held)).toBeCloseTo(uptime(geared), 10);
+    expect(sustainedStyle(held)).toBeCloseTo(2 * sustainedStyle(geared), 10);
   });
 });
 
@@ -1787,6 +1815,7 @@ describe("completing the ladder with Brain Twister", () => {
     expect(attemptableTricks(allLanded).map((trick) => trick.id)).toEqual([
       "eli-hops",
       "cold-fusion",
+      "spirit-bomb",
     ]);
   });
 

@@ -5,7 +5,11 @@ import { trickById } from "../core/simulation.js";
 import type { Purchasable, Report } from "./simulate.js";
 import { simulate } from "./simulate.js";
 import type { Timeline } from "./timeline.js";
-import { CANONICAL_TIMELINE, FIRST_SESSION_SECONDS } from "./timeline.js";
+import {
+  CANONICAL_TIMELINE,
+  FIRST_SESSION_SECONDS,
+  MAX_SECONDS_WITH_NOTHING_ATTEMPTABLE,
+} from "./timeline.js";
 
 /**
  * The pacing guards.
@@ -182,6 +186,23 @@ function engagedSecondsBy(timeline: Timeline, atSeconds: number): number {
 }
 
 describe("the 1A Division", () => {
+  /**
+   * #86's availability guard, demonstrated red before its content was added: the Report read
+   * 1h 26m 44s here, the spent ladder's tail. The same shape would also have rejected the
+   * measured 5m 37s hole in the old manual opening. One global maximum covers both sides of the
+   * Auto-Thrower: if either the manual opening or the automated stretch exceeds the threshold,
+   * it is necessarily the Report's maximum too.
+   *
+   * Green is only a floor. This says content remains on offer; it cannot say the choice is good.
+   */
+  it("never goes longer than the measured threshold with nothing Attemptable", () => {
+    const report = simulate(CANONICAL_TIMELINE);
+
+    expect(report.longestSecondsWithNothingAttemptable).toBeLessThanOrEqual(
+      MAX_SECONDS_WITH_NOTHING_ATTEMPTABLE,
+    );
+  });
+
   /**
    * The plan's first pacing role: Rock the Baby "safely lands on the opening Throw before any
    * Gear purchase." The engaged player Attempts the moment it is safe (#71), so an Attempt begun

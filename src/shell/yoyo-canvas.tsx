@@ -1,7 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { activeAttempt, rewindDuration, throwPower } from "../core/simulation.js";
-import type { GameState } from "../core/simulation.js";
+import type { ActiveAttempt, GameState } from "../core/simulation.js";
 import type { GameStore } from "./store.js";
 
 type YoyoCanvasProps = {
@@ -463,6 +463,63 @@ function drawMach5Mount(
   context.restore();
 }
 
+/**
+ * Spirit Bomb: crossed wrists hold a dense mount while the yoyo bursts up through it and drops
+ * back underneath. The sharp vertical burst and crossed hands keep Wrist Mount distinct from
+ * Mach 5's circular hand orbit and the open rise-and-fall of Eli Hops.
+ *
+ * Reduced motion holds the crossed Wrist Mount in its settled pose. Attempt progress remains
+ * legible in the ring, so removing the burst removes travel rather than timing or state.
+ */
+function spiritBombPose(
+  centre: Point,
+  progress: number,
+  reducedMotion: boolean,
+): { yoyo: Point; leftHand: Point; rightHand: Point } {
+  const burst = reducedMotion ? 0 : Math.sin(progress * Math.PI * 3) ** 2;
+  const sway = reducedMotion ? 0 : Math.sin(progress * Math.PI * 6) * 24 * (1 - burst * 0.5);
+
+  return {
+    yoyo: { x: centre.x + sway, y: centre.y - burst * 132 },
+    leftHand: { x: centre.x + 30, y: 52 + burst * 16 },
+    rightHand: { x: centre.x - 30, y: 72 - burst * 16 },
+  };
+}
+
+/** The crossed Wrist Mount Spirit Bomb bursts through. */
+function drawSpiritBombMount(
+  context: CanvasRenderingContext2D,
+  leftHand: Point,
+  rightHand: Point,
+  yoyo: Point,
+): void {
+  const yoyoTop = yoyo.y - YOYO_RADIUS + 3;
+  const wrist = {
+    x: (leftHand.x + rightHand.x) / 2,
+    y: Math.max(leftHand.y, rightHand.y) + 42,
+  };
+
+  context.save();
+  context.strokeStyle = "#c7bfae";
+  context.lineWidth = 1.4;
+  context.lineJoin = "round";
+
+  context.beginPath();
+  context.moveTo(leftHand.x, leftHand.y + 14);
+  context.lineTo(wrist.x - 14, wrist.y);
+  context.lineTo(yoyo.x + 10, yoyoTop);
+  context.lineTo(rightHand.x, rightHand.y + 14);
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(rightHand.x, rightHand.y + 14);
+  context.lineTo(wrist.x + 14, wrist.y - 8);
+  context.lineTo(yoyo.x - 10, yoyoTop + 3);
+  context.lineTo(leftHand.x, leftHand.y + 14);
+  context.stroke();
+  context.restore();
+}
+
 function drawAttemptProgress(
   context: CanvasRenderingContext2D,
   position: Point,
@@ -498,6 +555,102 @@ function yoyoPosition(state: GameState, { width, height }: CanvasSize): Point {
   return { x: x + sway, y: sleeperY + (readyY - sleeperY) * eased };
 }
 
+type AttemptScene = {
+  readonly yoyo: Point;
+  readonly hands: readonly Point[];
+  readonly drawRig: (context: CanvasRenderingContext2D) => void;
+};
+
+/** One authored visual plan per Trick, so adding a Trick extends one exhaustive choice. */
+function sceneForAttempt(
+  hand: Point,
+  resting: Point,
+  attempt: ActiveAttempt | null,
+  reducedMotion: boolean,
+): AttemptScene {
+  if (attempt === null) {
+    return {
+      yoyo: resting,
+      hands: [hand],
+      drawRig: (context) => drawString(context, hand, resting),
+    };
+  }
+
+  const trickId = attempt.trick.id;
+  switch (trickId) {
+    case "rock-the-baby": {
+      const yoyo = {
+        x: resting.x + swingOffset(attempt.progress, reducedMotion),
+        y: resting.y,
+      };
+      return {
+        yoyo,
+        hands: [hand],
+        drawRig: (context) => drawCradle(context, hand, yoyo, attempt.progress),
+      };
+    }
+    case "man-on-the-flying-trapeze": {
+      const offset = trapezeOffset(attempt.progress, reducedMotion);
+      const yoyo = { x: resting.x + offset.x, y: resting.y + offset.y };
+      return {
+        yoyo,
+        hands: [hand],
+        drawRig: (context) => drawTrapezeBar(context, hand, yoyo),
+      };
+    }
+    case "brain-twister": {
+      const yoyo = {
+        x: resting.x + twistShiver(attempt.progress, reducedMotion),
+        y: resting.y,
+      };
+      return {
+        yoyo,
+        hands: [hand],
+        drawRig: (context) => drawTwistedString(context, hand, yoyo, attempt.progress),
+      };
+    }
+    case "eli-hops": {
+      const pose = eliHopsPose(resting, attempt.progress, reducedMotion);
+      return {
+        yoyo: pose.yoyo,
+        hands: [pose.leftHand, pose.rightHand],
+        drawRig: (context) =>
+          drawEliHopsMount(context, pose.leftHand, pose.rightHand, pose.yoyo),
+      };
+    }
+    case "cold-fusion": {
+      const pose = coldFusionPose(resting, attempt.progress, reducedMotion);
+      return {
+        yoyo: pose.yoyo,
+        hands: [pose.leftHand, pose.rightHand],
+        drawRig: (context) =>
+          drawColdFusionMount(context, pose.leftHand, pose.rightHand, pose.yoyo),
+      };
+    }
+    case "mach-5": {
+      const pose = mach5Pose(resting, attempt.progress, reducedMotion);
+      return {
+        yoyo: pose.yoyo,
+        hands: [pose.leftHand, pose.rightHand],
+        drawRig: (context) => drawMach5Mount(context, pose.leftHand, pose.rightHand, pose.yoyo),
+      };
+    }
+    case "spirit-bomb": {
+      const pose = spiritBombPose(resting, attempt.progress, reducedMotion);
+      return {
+        yoyo: pose.yoyo,
+        hands: [pose.leftHand, pose.rightHand],
+        drawRig: (context) =>
+          drawSpiritBombMount(context, pose.leftHand, pose.rightHand, pose.yoyo),
+      };
+    }
+    default: {
+      const unhandled: never = trickId;
+      return unhandled;
+    }
+  }
+}
+
 function drawScene(
   context: CanvasRenderingContext2D,
   size: CanvasSize,
@@ -512,60 +665,14 @@ function drawScene(
   // A Rewind commitment is waiting for a Sleeper, so the canvas keeps showing the physical
   // Rewind until the Attempt actually begins to drain Spin.
   const attempt = state.phase === "Sleeping" ? activeAttempt(state) : null;
-  const rocking = attempt?.trick.id === "rock-the-baby";
-  const flying = attempt?.trick.id === "man-on-the-flying-trapeze";
-  const twisting = attempt?.trick.id === "brain-twister";
-  const hopping = attempt?.trick.id === "eli-hops";
-  const fusing = attempt?.trick.id === "cold-fusion";
-  const circling = attempt?.trick.id === "mach-5";
-  const trapeze = flying && attempt !== null ? trapezeOffset(attempt.progress, reducedMotion) : null;
-  const eliPose =
-    hopping && attempt !== null ? eliHopsPose(resting, attempt.progress, reducedMotion) : null;
-  const coldFusion =
-    fusing && attempt !== null ? coldFusionPose(resting, attempt.progress, reducedMotion) : null;
-  const mach5 =
-    circling && attempt !== null ? mach5Pose(resting, attempt.progress, reducedMotion) : null;
-  const yoyo =
-    mach5 !== null
-      ? mach5.yoyo
-      : coldFusion !== null
-        ? coldFusion.yoyo
-        : eliPose !== null
-          ? eliPose.yoyo
-          : attempt !== null && rocking
-            ? { x: resting.x + swingOffset(attempt.progress, reducedMotion), y: resting.y }
-            : trapeze !== null
-              ? { x: resting.x + trapeze.x, y: resting.y + trapeze.y }
-              : attempt !== null && twisting
-                ? { x: resting.x + twistShiver(attempt.progress, reducedMotion), y: resting.y }
-                : resting;
+  const scene = sceneForAttempt(hand, resting, attempt, reducedMotion);
   const spinRatio =
     state.phase === "Sleeping" ? clamp(state.spin / Math.max(throwPower(state), 1), 0, 1) : 0;
 
-  if (mach5 !== null) {
-    drawMach5Mount(context, mach5.leftHand, mach5.rightHand, yoyo);
-  } else if (coldFusion !== null) {
-    drawColdFusionMount(context, coldFusion.leftHand, coldFusion.rightHand, yoyo);
-  } else if (eliPose !== null) drawEliHopsMount(context, eliPose.leftHand, eliPose.rightHand, yoyo);
-  else if (attempt !== null && rocking) drawCradle(context, hand, yoyo, attempt.progress);
-  else if (attempt !== null && flying) drawTrapezeBar(context, hand, yoyo);
-  else if (attempt !== null && twisting) drawTwistedString(context, hand, yoyo, attempt.progress);
-  else drawString(context, hand, yoyo);
-
-  if (mach5 !== null) {
-    drawHand(context, mach5.leftHand);
-    drawHand(context, mach5.rightHand);
-  } else if (coldFusion !== null) {
-    drawHand(context, coldFusion.leftHand);
-    drawHand(context, coldFusion.rightHand);
-  } else if (eliPose !== null) {
-    drawHand(context, eliPose.leftHand);
-    drawHand(context, eliPose.rightHand);
-  } else {
-    drawHand(context, hand);
-  }
-  drawYoyo(context, yoyo, angle, spinRatio);
-  if (attempt !== null) drawAttemptProgress(context, yoyo, attempt.progress);
+  scene.drawRig(context);
+  for (const sceneHand of scene.hands) drawHand(context, sceneHand);
+  drawYoyo(context, scene.yoyo, angle, spinRatio);
+  if (attempt !== null) drawAttemptProgress(context, scene.yoyo, attempt.progress);
 }
 
 /**
