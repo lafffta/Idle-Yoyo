@@ -349,6 +349,71 @@ function drawEliHopsMount(
   context.restore();
 }
 
+/**
+ * Cold Fusion: the hands trade height while the yoyo rolls across a double-or-nothing rig. The
+ * crossed strings distinguish it from Eli Hops' open V even at the instant both yoyos are still.
+ *
+ * Reduced motion holds the hands apart and the yoyo beneath the crossing. The authored double
+ * wrap remains visible while the progress ring carries timing, with no travel across the canvas.
+ */
+function coldFusionPose(
+  centre: Point,
+  progress: number,
+  reducedMotion: boolean,
+): { yoyo: Point; leftHand: Point; rightHand: Point } {
+  if (reducedMotion) {
+    return {
+      yoyo: centre,
+      leftHand: { x: centre.x - 76, y: 48 },
+      rightHand: { x: centre.x + 76, y: 72 },
+    };
+  }
+
+  const turn = progress * Math.PI * 2;
+  const exchange = Math.sin(turn);
+  return {
+    yoyo: {
+      x: centre.x + Math.sin(turn * 2) * 44,
+      y: centre.y - Math.sin(turn) ** 2 * 72,
+    },
+    leftHand: { x: centre.x - 76 + exchange * 38, y: 48 + exchange * 24 },
+    rightHand: { x: centre.x + 76 - exchange * 38, y: 72 - exchange * 24 },
+  };
+}
+
+/** The crossing double wrap Cold Fusion rolls through. */
+function drawColdFusionMount(
+  context: CanvasRenderingContext2D,
+  leftHand: Point,
+  rightHand: Point,
+  yoyo: Point,
+): void {
+  const yoyoTop = yoyo.y - YOYO_RADIUS + 3;
+  const crossing = {
+    x: (leftHand.x + rightHand.x + yoyo.x) / 3,
+    y: Math.min(yoyoTop - 24, (leftHand.y + rightHand.y) / 2 + 54),
+  };
+
+  context.save();
+  context.strokeStyle = "#c7bfae";
+  context.lineWidth = 1.4;
+  context.lineJoin = "round";
+
+  context.beginPath();
+  context.moveTo(leftHand.x, leftHand.y + 14);
+  context.lineTo(crossing.x + 11, crossing.y);
+  context.lineTo(yoyo.x, yoyoTop);
+  context.lineTo(rightHand.x, rightHand.y + 14);
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(rightHand.x, rightHand.y + 14);
+  context.lineTo(crossing.x - 11, crossing.y);
+  context.lineTo(yoyo.x - 7, yoyoTop + 2);
+  context.stroke();
+  context.restore();
+}
+
 function drawAttemptProgress(
   context: CanvasRenderingContext2D,
   position: Point,
@@ -400,29 +465,39 @@ function drawScene(
   const flying = attempt?.trick.id === "man-on-the-flying-trapeze";
   const twisting = attempt?.trick.id === "brain-twister";
   const hopping = attempt?.trick.id === "eli-hops";
+  const fusing = attempt?.trick.id === "cold-fusion";
   const trapeze = flying && attempt !== null ? trapezeOffset(attempt.progress, reducedMotion) : null;
   const eliPose =
     hopping && attempt !== null ? eliHopsPose(resting, attempt.progress, reducedMotion) : null;
+  const coldFusion =
+    fusing && attempt !== null ? coldFusionPose(resting, attempt.progress, reducedMotion) : null;
   const yoyo =
-    eliPose !== null
-      ? eliPose.yoyo
-      : attempt !== null && rocking
-        ? { x: resting.x + swingOffset(attempt.progress, reducedMotion), y: resting.y }
-        : trapeze !== null
-          ? { x: resting.x + trapeze.x, y: resting.y + trapeze.y }
-          : attempt !== null && twisting
-            ? { x: resting.x + twistShiver(attempt.progress, reducedMotion), y: resting.y }
-            : resting;
+    coldFusion !== null
+      ? coldFusion.yoyo
+      : eliPose !== null
+        ? eliPose.yoyo
+        : attempt !== null && rocking
+          ? { x: resting.x + swingOffset(attempt.progress, reducedMotion), y: resting.y }
+          : trapeze !== null
+            ? { x: resting.x + trapeze.x, y: resting.y + trapeze.y }
+            : attempt !== null && twisting
+              ? { x: resting.x + twistShiver(attempt.progress, reducedMotion), y: resting.y }
+              : resting;
   const spinRatio =
     state.phase === "Sleeping" ? clamp(state.spin / Math.max(throwPower(state), 1), 0, 1) : 0;
 
-  if (eliPose !== null) drawEliHopsMount(context, eliPose.leftHand, eliPose.rightHand, yoyo);
+  if (coldFusion !== null) {
+    drawColdFusionMount(context, coldFusion.leftHand, coldFusion.rightHand, yoyo);
+  } else if (eliPose !== null) drawEliHopsMount(context, eliPose.leftHand, eliPose.rightHand, yoyo);
   else if (attempt !== null && rocking) drawCradle(context, hand, yoyo, attempt.progress);
   else if (attempt !== null && flying) drawTrapezeBar(context, hand, yoyo);
   else if (attempt !== null && twisting) drawTwistedString(context, hand, yoyo, attempt.progress);
   else drawString(context, hand, yoyo);
 
-  if (eliPose !== null) {
+  if (coldFusion !== null) {
+    drawHand(context, coldFusion.leftHand);
+    drawHand(context, coldFusion.rightHand);
+  } else if (eliPose !== null) {
     drawHand(context, eliPose.leftHand);
     drawHand(context, eliPose.rightHand);
   } else {

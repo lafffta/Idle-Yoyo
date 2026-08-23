@@ -1187,11 +1187,23 @@ describe("coming back from eight hours away without an Auto-Thrower", () => {
  * Throw, from a yoyo with nothing bought.
  */
 describe("Attempting a Trick", () => {
-  it("offers the opening spine Trick and Eli Hops together on the opening Sleeper", () => {
+  it("offers the opening spine Trick and both Mount Tricks together on the opening Sleeper", () => {
     expect(attemptableTricks(freshSleeper()).map((trick) => trick.id)).toEqual([
       "rock-the-baby",
       "eli-hops",
+      "cold-fusion",
     ]);
+  });
+
+  it("quotes Cold Fusion's own exact outcome beside the other opening choices", () => {
+    const sleeper = freshSleeper();
+    const coldFusion = attemptableTricks(sleeper).find((trick) => trick.id === "cold-fusion");
+    if (coldFusion === undefined) throw new Error("expected Cold Fusion to be Attemptable");
+
+    expect(previewNamedAttempt(sleeper, coldFusion.id)?.outcome).toEqual({
+      lands: false,
+      secondsUntilDeath: 100 / 45,
+    });
   });
 
   it("refuses a named Trick further up the spine", () => {
@@ -1299,6 +1311,7 @@ describe("Attempting a Trick", () => {
       "Man on the Flying Trapeze",
       "Brain Twister",
       "Eli Hops",
+      "Cold Fusion",
     ]);
   });
 });
@@ -1314,7 +1327,7 @@ describe("landing Eli Hops from the Trapeze Mount", () => {
     const nextThrow = throwYoyo({ ...geared, landedTricks: ["eli-hops"] });
 
     // The 200-Spin Throw spends 160 on the Attempt, then Eli Hops packs the 40 left into 60.
-    expect(preview?.outcome).toEqual({ lands: true, spinOnLanding: 60 });
+    expect(preview?.outcome).toEqual({ lands: true, spinOnLanding: 60, styleBonus: 0 });
     expect(projectedYield(attempting)).toBeCloseTo(styleEarnedBeforeDying(attempting), 8);
     expect(landed.spin).toBeCloseTo(60, 10);
     expect(nextThrow.spin).toBe(300);
@@ -1343,6 +1356,76 @@ describe("landing Eli Hops from the Trapeze Mount", () => {
 
     expect(previewNamedAttempt(sleeper, "eli-hops")).toBe(null);
     expect(activeAttempt(attemptNamedTrick(sleeper, "eli-hops"))).toBe(null);
+  });
+});
+
+describe("landing Cold Fusion from the Double-or-Nothing Mount", () => {
+  it("previews and pays Style scaled by the Spin left above its cost", () => {
+    const sleeper = throwYoyo(afterBuyingThrowPower(7));
+
+    const preview = previewNamedAttempt(sleeper, "cold-fusion");
+    const attempting = attemptNamedTrick(sleeper, "cold-fusion");
+    const landed = advance(attempting, 5);
+
+    // A 240-Spin Throw spends 225 on the Attempt, leaving 15 Spin of headroom and therefore
+    // paying 15 bonus Style. The Sleeper itself earns 6.375 Style during those five seconds.
+    expect(preview?.outcome).toEqual({ lands: true, spinOnLanding: 15, styleBonus: 15 });
+    expect(attempting.style).toBe(sleeper.style);
+    expect(projectedYield(attempting)).toBeCloseTo(styleEarnedBeforeDying(attempting), 8);
+    expect(landed.spin).toBeCloseTo(15, 10);
+    expect(landed.style).toBeCloseTo(6.375 + 15, 10);
+    expect(landed.lifetimeStyle).toBeCloseTo(6.375 + 15, 10);
+    expect(landed.landedTricks).toEqual(["cold-fusion"]);
+  });
+
+  it("pays more when a stronger Throw brings more headroom to the same cost", () => {
+    const atSeven = throwYoyo(afterBuyingThrowPower(7));
+    const atEight = throwYoyo(afterBuyingThrowPower(8));
+
+    expect(previewNamedAttempt(atSeven, "cold-fusion")?.outcome).toEqual({
+      lands: true,
+      spinOnLanding: 15,
+      styleBonus: 15,
+    });
+    expect(previewNamedAttempt(atEight, "cold-fusion")?.outcome).toEqual({
+      lands: true,
+      spinOnLanding: 35,
+      styleBonus: 35,
+    });
+  });
+
+  it("leaves Sleeper length, Rewind, Uptime, and earnings during Rewind unchanged", () => {
+    const geared = afterShopping(
+      [buyThrowPower, 7],
+      [buyBearing, 3],
+      [buyRewindSpeed, 2],
+    );
+    const held: GameState = { ...geared, landedTricks: ["cold-fusion"] };
+
+    expect(sleeperLength(held)).toBeCloseTo(sleeperLength(geared), 10);
+    expect(rewindDuration(held)).toBeCloseTo(rewindDuration(geared), 10);
+    expect(uptime(held)).toBeCloseTo(uptime(geared), 10);
+    expect(sustainedStyle(held)).toBeCloseTo(sustainedStyle(geared), 10);
+
+    const rewinding = advance(throwYoyo(held), sleeperLength(held));
+    expect(rewinding.phase).toBe("Rewinding");
+    expect(advance(rewinding, 1).style).toBeCloseTo(rewinding.style, 10);
+  });
+
+  it("does not hard-lock Trapeze, so both Mount Tricks can land in one run", () => {
+    const geared = afterBuyingThrowPower(20);
+    const coldFusionLanded = advance(
+      attemptNamedTrick(throwYoyo(geared), "cold-fusion"),
+      5,
+    );
+    const readyAgain = advance(coldFusionLanded, 10_000);
+    const bothLanded = advance(
+      attemptNamedTrick(throwYoyo(readyAgain), "eli-hops"),
+      4,
+    );
+
+    expect(bothLanded.landedTricks).toEqual(["cold-fusion", "eli-hops"]);
+    expect(bothLanded.phase).toBe("Sleeping");
   });
 });
 
@@ -1386,7 +1469,11 @@ describe("chaining Man on the Flying Trapeze onto a landed Rock the Baby", () =>
 
     const rockedTheBaby = advance(attemptTrick(geared), 1.5);
     expect(rockedTheBaby.spin).toBeCloseTo(155, 10);
-    expect(previewAttempt(rockedTheBaby)?.outcome).toEqual({ lands: true, spinOnLanding: 55 });
+    expect(previewAttempt(rockedTheBaby)?.outcome).toEqual({
+      lands: true,
+      spinOnLanding: 55,
+      styleBonus: 0,
+    });
 
     const bothLanded = advance(attemptTrick(rockedTheBaby), 2.5);
 
@@ -1502,7 +1589,11 @@ describe("completing the ladder with Brain Twister", () => {
   it("lands on a strong enough Throw, finishing the spine and compounding all three rewards", () => {
     const before = sustainedStyle(throwYoyo(afterBuyingThrowPower(15)));
     const bothLanded = landedRockAndTrapeze(15);
-    expect(previewAttempt(bothLanded)?.outcome).toEqual({ lands: true, spinOnLanding: 55 });
+    expect(previewAttempt(bothLanded)?.outcome).toEqual({
+      lands: true,
+      spinOnLanding: 55,
+      styleBonus: 0,
+    });
 
     const allLanded = advance(attemptTrick(bothLanded), 4);
 
@@ -1515,7 +1606,10 @@ describe("completing the ladder with Brain Twister", () => {
     expect(allLanded.spin).toBeCloseTo(55, 10);
     expect(sustainedStyle(allLanded)).toBeCloseTo(before * 1.25 * 1.5 * 2, 10);
 
-    expect(attemptableTricks(allLanded).map((trick) => trick.id)).toEqual(["eli-hops"]);
+    expect(attemptableTricks(allLanded).map((trick) => trick.id)).toEqual([
+      "eli-hops",
+      "cold-fusion",
+    ]);
   });
 
   it("runs its Attempt over its own 4-second duration, not one borrowed from an earlier row", () => {
@@ -1710,7 +1804,7 @@ describe("previewing an Attempt before committing to it", () => {
     const preview = previewAttempt(sleeper);
     const landed = advance(attemptTrick(sleeper), 1.5);
 
-    expect(preview?.outcome).toEqual({ lands: true, spinOnLanding: 35 });
+    expect(preview?.outcome).toEqual({ lands: true, spinOnLanding: 35, styleBonus: 0 });
     expect(landed.spin).toBeCloseTo(35, 10);
     expect(landed.landedTricks).toEqual(["rock-the-baby"]);
   });
@@ -1873,6 +1967,23 @@ describe("an Attempt resolving whether or not anyone is watching", () => {
     expect(watched.spin).toBeCloseTo(returned.spin, 10);
     expect(watched.style).toBeCloseTo(returned.style, 10);
     expect(returned.style).toBeGreaterThan(10_000);
+  });
+
+  it("lands Cold Fusion with the same bonus in one long advance or many watched ticks", () => {
+    const geared = afterBuyingThrowPower(7);
+    const automatic = buyAutoThrower({ ...geared, style: autoThrowerCost() });
+    const attempting = attemptNamedTrick(throwYoyo(automatic), "cold-fusion");
+
+    const returned = advance(attempting, 20);
+    let watched = attempting;
+    for (let quarter = 0; quarter < 80; quarter++) watched = advance(watched, 0.25);
+
+    expect(returned.landedTricks).toEqual(["cold-fusion"]);
+    expect(watched.landedTricks).toEqual(returned.landedTricks);
+    expect(watched.phase).toBe(returned.phase);
+    expect(watched.spin).toBeCloseTo(returned.spin, 10);
+    expect(watched.style).toBeCloseTo(returned.style, 10);
+    expect(watched.lifetimeStyle).toBeCloseTo(returned.lifetimeStyle, 10);
   });
 
   /**
