@@ -17,6 +17,22 @@ import {
 } from "./test-helpers.js";
 
 describe("the Throw control", () => {
+  it("keeps one Throw action in a page-level control region while the player browses Tricks", () => {
+    const markup = renderToStaticMarkup(<App store={createGameStore({ now: () => 0 })} />);
+    const control = markup.match(
+      /<aside[^>]*aria-label="Throw control"[^>]*>[\s\S]*?<\/aside>/,
+    )?.[0];
+    const throwCycle = markup.match(
+      /<section[^>]*aria-label="Throw Cycle"[^>]*>[\s\S]*?<\/section>/,
+    )?.[0];
+
+    expect(control).toBeDefined();
+    expect(control?.match(/<button/g)).toHaveLength(1);
+    expect(control).toMatch(/<button[^>]*disabled=""[^>]*>Throw<\/button>/);
+    expect(control).toContain("Available when the yoyo is back in hand.");
+    expect(throwCycle).not.toContain(">Throw</button>");
+  });
+
   it("explains when Throw is unavailable and enables it when the yoyo is back in hand", () => {
     let now = 0;
     const store = createGameStore({ now: () => now });
