@@ -353,10 +353,23 @@ h1 {
 }
 
 .throw-control {
-  display: grid;
-  justify-items: center;
-  gap: 0.7rem;
-  margin-top: 2rem;
+  position: sticky;
+  z-index: 10;
+  top: 0.75rem;
+  align-self: start;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  width: min(100%, 68rem);
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(222, 118, 75, 0.38);
+  border-radius: 0.35rem;
+  background: rgba(24, 23, 19, 0.94);
+  box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
 }
 
 .action-button {
@@ -399,6 +412,7 @@ h1 {
   margin: 0;
   color: #8e887d;
   font-size: 0.75rem;
+  text-align: left;
 }
 
 .gear-shop,
@@ -798,6 +812,16 @@ h1 {
 @media (max-width: 32rem) {
   .shell {
     padding: 1.25rem;
+  }
+
+  .throw-control {
+    top: 0.5rem;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .throw-button {
+    min-width: 8rem;
   }
 
   .style-card {

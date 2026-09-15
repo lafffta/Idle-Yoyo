@@ -449,7 +449,7 @@ function ThrowControl({ store }: AppProps) {
   );
 
   return (
-    <div className="throw-control">
+    <aside className="throw-control" aria-label="Throw control">
       <button
         className="action-button throw-button"
         type="button"
@@ -462,7 +462,7 @@ function ThrowControl({ store }: AppProps) {
       <p id="throw-status" className="throw-status" aria-live="polite">
         {isReady ? THROW_READY_COPY : THROW_WAITING_COPY}
       </p>
-    </div>
+    </aside>
   );
 }
 
@@ -487,6 +487,8 @@ export function App({ store, saveWasUnreadable = false }: AppProps) {
         <span>IDLE YOYO</span>
       </header>
 
+      <ThrowControl store={store} />
+
       {saveWasUnreadable ? <UnreadableSaveWarning /> : null}
 
       <SustainedStyleGuide store={store} />
@@ -510,7 +512,6 @@ export function App({ store, saveWasUnreadable = false }: AppProps) {
             <span>Style</span>
             <StyleTicker store={store} />
           </div>
-          <ThrowControl store={store} />
         </div>
       </section>
 
