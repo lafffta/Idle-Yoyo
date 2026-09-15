@@ -232,15 +232,32 @@ describe("the Gear shop", () => {
   });
 });
 
+/** A rendered region identified by its accessible heading relationship. */
+function labelledRegionMarkup(markup: string, labelledBy: string): string {
+  const opening = new RegExp(
+    `<([a-z][a-z0-9-]*)[^>]*aria-labelledby="${labelledBy}"[^>]*>`,
+  ).exec(markup);
+
+  if (opening?.index === undefined) throw new Error(`expected a region labelled by ${labelledBy}`);
+
+  const closing = `</${opening[1]}>`;
+  const closingStart = markup.indexOf(closing, opening.index + opening[0].length);
+  if (closingStart === -1) throw new Error(`expected ${labelledBy} region to close`);
+
+  return markup.slice(opening.index, closingStart + closing.length);
+}
+
 /** The 1A Division, as a player meets it on their opening Throw. */
 function trickDivisionMarkup(store: GameStore): string {
-  const markup = renderToStaticMarkup(<App store={store} />);
-  const ladder = markup.match(
-    /<section[^>]*aria-labelledby="trick-division-heading"[^>]*>[\s\S]*?<\/section>/,
-  )?.[0];
+  return labelledRegionMarkup(
+    renderToStaticMarkup(<App store={store} />),
+    "trick-division-heading",
+  );
+}
 
-  if (ladder === undefined) throw new Error("expected a 1A Division on the page");
-  return ladder;
+/** One player-visible Trick row, selected by its accessible heading relationship. */
+function trickRowMarkup(store: GameStore, trickId: string): string {
+  return labelledRegionMarkup(trickDivisionMarkup(store), `trick-${trickId}-heading`);
 }
 
 describe("the 1A Division", () => {
@@ -275,9 +292,6 @@ describe("the 1A Division", () => {
     expect(ladder).toContain("Land Rock the Baby first");
     expect(ladder).toContain("Land Man on the Flying Trapeze first");
     expect(ladder).toContain("4s · Structural Trick");
-    expect(ladder).toContain(
-      "Throw Power packs more Spin into every Throw without making Sleepers longer.",
-    );
     expect(ladder).toContain("Landing pays Style equal to the Spin left above Cold Fusion");
     expect(ladder).toContain(
       "Throw Power packs far more Spin into every Throw without making Sleepers longer.",
@@ -320,6 +334,23 @@ describe("the 1A Division", () => {
     expect(ladder).toContain("Lands with 55 Spin still turning.");
     // Eli Hops is offered beside it, even though the opening Sleeper cannot sustain the Mount.
     expect(ladder).toContain("Runs out of Spin after 2.5s, and the Yoyo dies.");
+  });
+
+  it("explains Eli Hops' exact Throw Power conversion beside safe and fatal forecasts", () => {
+    const explanation =
+      "Landing Eli Hops makes each unit of Throw Power produce 1.5 times as much Spin while leaving Sleeper duration unchanged.";
+
+    const fatalRow = trickRowMarkup(createGameStore({ now: () => 0 }), "eli-hops");
+    expect(fatalRow).toContain(explanation);
+    expect(fatalRow).toContain("Runs out of Spin after 2.5s, and the Yoyo dies.");
+
+    const safeStore = createGameStore({
+      now: () => 0,
+      restored: { tickedAt: 0, state: gearedFreshSleeper(5) },
+    });
+    const safeRow = trickRowMarkup(safeStore, "eli-hops");
+    expect(safeRow).toContain(explanation);
+    expect(safeRow).toContain("Lands with 60 Spin still turning.");
   });
 
   it("lands Eli Hops with its exact preview and raises the headline through its Structural effect", () => {
