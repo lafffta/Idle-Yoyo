@@ -149,6 +149,8 @@ export const SPINE_TRICKS_1A = [
   },
 ] as const;
 
+const ELI_HOPS_THROW_POWER_SPIN_MULTIPLIER = 1.5;
+
 export const TRAPEZE_MOUNT_TRICKS_1A = [
   {
     id: "eli-hops",
@@ -158,12 +160,11 @@ export const TRAPEZE_MOUNT_TRICKS_1A = [
     styleMultiplier: 1,
     spinDrainMultiplier: 2,
     /** How much more Spin Throw Power becomes once Eli Hops has landed. */
-    throwPowerSpinMultiplier: 1.5,
+    throwPowerSpinMultiplier: ELI_HOPS_THROW_POWER_SPIN_MULTIPLIER,
     landingStylePerSpinHeadroom: 0,
     requiresAutoThrower: false,
     allowsAttemptDuringRewind: false,
-    effectDescription:
-      "Throw Power packs more Spin into every Throw without making Sleepers longer.",
+    effectDescription: `Landing Eli Hops makes each unit of Throw Power produce ${ELI_HOPS_THROW_POWER_SPIN_MULTIPLIER} times as much Spin while leaving Sleeper duration unchanged.`,
   },
 ] as const;
 

@@ -286,11 +286,12 @@ function TrickRow({
   store: GameStore;
 }) {
   const isAttemptable = row.status === "attemptable";
+  const headingId = `trick-${row.id}-heading`;
 
   return (
-    <article className={`trick-row is-${row.status}`}>
+    <article className={`trick-row is-${row.status}`} aria-labelledby={headingId}>
       <div className="trick-copy">
-        <h4>{row.name}</h4>
+        <h4 id={headingId}>{row.name}</h4>
         <span className="trick-terms">
           {formatNumber(row.durationSeconds)}s ·{" "}
           {row.kind === "style"
